@@ -1,0 +1,731 @@
+// AstronomiQ CX — full schema. Mirrors Guide §6 DDL + Implementation Plan §3.1 gap tables.
+// Conventions: every business model has tenantId + @@index([tenantId, ...]) + RLS
+// (RLS lives in prisma/rls.sql — Prisma cannot manage policies).
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [vector, uuid_ossp(map: "uuid-ossp")]
+}
+
+// ============ IDENTITY & TENANCY ============
+
+model Tenant {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name       String
+  subdomain  String   @unique
+  plan       String   @default("business")
+  status     String   @default("active") // active | suspended
+  dataRegion String   @default("ap-south-1") @map("data_region")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  roles           Role[]
+  departments     Department[]
+  teams           Team[]
+  users           User[]
+  contacts        Contact[]
+  orders          Order[]
+  conversations   Conversation[]
+  messages        Message[]
+  tickets         Ticket[]
+  businessHours   BusinessHours[]
+  slaPolicies     SlaPolicy[]
+  slaEvents       SlaEvent[]
+  escalationRules EscalationRule[]
+  escalations     Escalation[]
+  kbArticles      KbArticle[]
+  kbEmbeddings    KbEmbedding[]
+  macros          Macro[]
+  agentFlows      AgentFlow[]
+  rules           Rule[]
+  channels        Channel[]
+  numbers         NumberDid[]
+  calls           Call[]
+  campaigns       Campaign[]
+  surveys         Survey[]
+  serviceVisits   ServiceVisit[]
+  qaAudits        QaAudit[]
+  auditLogs       AuditLog[]
+  subscriptions   Subscription[]
+  agentStatuses   AgentStatusRow[]
+  shifts          Shift[]
+  socialMentions  SocialMention[]
+  queues          Queue[]
+  notifications   Notification[]
+  invoices        Invoice[]
+  invites         Invite[]
+  settings        TenantSettings?
+
+  @@map("tenants")
+}
+
+model Role {
+  id          String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String  @map("tenant_id") @db.Uuid
+  tenant      Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String // Admin, Manager, TeamLead, Agent, QA, Viewer
+  permissions Json    @default("[]") // ['ticket.view.all', ...]
+  users       User[]
+  invites     Invite[]
+
+  @@unique([tenantId, name])
+  @@map("roles")
+}
+
+model Department {
+  id         String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId   String  @map("tenant_id") @db.Uuid
+  tenant     Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name       String
+  icon       String? // UI: dept card emoji/icon key
+  color      String? // UI: dept card accent
+  headUserId String? @map("head_user_id") @db.Uuid
+  teams      Team[]
+  users      User[]
+  tickets    Ticket[]
+  queues     Queue[]
+
+  @@index([tenantId])
+  @@map("departments")
+}
+
+model Team {
+  id           String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId     String      @map("tenant_id") @db.Uuid
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  departmentId String?     @map("department_id") @db.Uuid
+  department   Department? @relation(fields: [departmentId], references: [id])
+  name         String
+  leadUserId   String?     @map("lead_user_id") @db.Uuid
+  users        User[]
+
+  @@index([tenantId])
+  @@map("teams")
+}
+
+model User {
+  id           String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId     String      @map("tenant_id") @db.Uuid
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name         String
+  email        String
+  oidcSubject  String?     @map("oidc_subject") // Keycloak/Auth0 subject; no local passwords
+  roleId       String?     @map("role_id") @db.Uuid
+  role         Role?       @relation(fields: [roleId], references: [id])
+  departmentId String?     @map("department_id") @db.Uuid
+  department   Department? @relation(fields: [departmentId], references: [id])
+  teamId       String?     @map("team_id") @db.Uuid
+  team         Team?       @relation(fields: [teamId], references: [id])
+  title        String? // UI: role title shown on cards ("CX Team Lead")
+  avatarColor  String?     @map("avatar_color") // UI: avatar chip color
+  status       String      @default("active")
+  lastLogin    DateTime?   @map("last_login") @db.Timestamptz(6)
+
+  assignedTickets       Ticket[]         @relation("TicketAssignee")
+  assignedConversations Conversation[]   @relation("ConversationAssignee")
+  agentStatus           AgentStatusRow?
+  shifts                Shift[]
+  calls                 Call[]
+  escalations           Escalation[]
+  notifications         Notification[]
+  qaAudits              QaAudit[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId, oidcSubject])
+  @@map("users")
+}
+
+// ============ CUSTOMERS & CONVERSATIONS ============
+
+model Contact {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name          String?
+  phone         String?
+  email         String?
+  location      String? // UI: inbox copilot + C360 profile
+  language      String?  @default("en")
+  loyaltyTier   String?  @map("loyalty_tier")
+  lifetimeValue Decimal  @default(0) @map("lifetime_value")
+  segment       String? // gold | vip | regular ... (campaign segments)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  orders        Order[]
+  conversations Conversation[]
+  tickets       Ticket[]
+  calls         Call[]
+  serviceVisits ServiceVisit[]
+  surveys       Survey[]
+  qaAudits      QaAudit[]
+
+  @@index([tenantId, phone])
+  @@index([tenantId, email])
+  @@map("contacts")
+}
+
+model Order {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contactId   String?  @map("contact_id") @db.Uuid
+  contact     Contact? @relation(fields: [contactId], references: [id])
+  extRef      String?  @map("ext_ref") // ZK-483920 style human id
+  description String?
+  amount      Decimal?
+  status      String? // delivered | in_transit | refunded ...
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tenantId, contactId])
+  @@map("orders")
+}
+
+model Conversation {
+  id             String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contactId      String?   @map("contact_id") @db.Uuid
+  contact        Contact?  @relation(fields: [contactId], references: [id])
+  channel        String // whatsapp|chat|email|voice|instagram|facebook|x
+  status         String    @default("open")
+  sentiment      String? // pos|neu|neg (AI worker)
+  intent         String? // order_tracking|refund|... (AI worker; Analytics/QA charts)
+  language       String? // en|hi|... (AI worker; Analytics language split)
+  assignedUserId String?   @map("assigned_user_id") @db.Uuid
+  assignedUser   User?     @relation("ConversationAssignee", fields: [assignedUserId], references: [id])
+  departmentId   String?   @map("department_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  messages Message[]
+  tickets  Ticket[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, channel, createdAt])
+  @@map("conversations")
+}
+
+model Message {
+  id             String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId       String       @map("tenant_id") @db.Uuid
+  tenant         Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversationId String       @map("conversation_id") @db.Uuid
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderType     String       @map("sender_type") // customer|bot|agent
+  senderId       String?      @map("sender_id") @db.Uuid
+  body           String?
+  mediaUrl       String?      @map("media_url")
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([conversationId, createdAt])
+  @@index([tenantId])
+  @@map("messages")
+}
+
+// ============ TICKETS ============
+
+model Ticket {
+  id             String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId       String        @map("tenant_id") @db.Uuid
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  extRef         String?       @map("ext_ref") // AQ-T-4821 (nextRef)
+  contactId      String?       @map("contact_id") @db.Uuid
+  contact        Contact?      @relation(fields: [contactId], references: [id])
+  conversationId String?       @map("conversation_id") @db.Uuid
+  conversation   Conversation? @relation(fields: [conversationId], references: [id])
+  subject        String
+  description    String?
+  priority       String        @default("p3") // p1|p2|p3|p4
+  category       String?
+  status         String        @default("new") // new|in_progress|waiting|resolved|closed
+  assignedUserId String?       @map("assigned_user_id") @db.Uuid
+  assignedUser   User?         @relation("TicketAssignee", fields: [assignedUserId], references: [id])
+  departmentId   String?       @map("department_id") @db.Uuid
+  department     Department?   @relation(fields: [departmentId], references: [id])
+  slaPolicyId    String?       @map("sla_policy_id") @db.Uuid
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  slaEvents   SlaEvent[]
+  escalations Escalation[]
+  calls       Call[]
+  surveys     Survey[]
+  mentions    SocialMention[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, assignedUserId])
+  @@index([tenantId, createdAt])
+  @@map("tickets")
+}
+
+// ============ SLA & ESCALATION ============
+
+model BusinessHours {
+  id       String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name     String
+  timezone String @default("Asia/Kolkata")
+  weekly   Json // {"mon":["09:00","21:00"], ...}
+  holidays Json   @default("[]")
+
+  slaPolicies SlaPolicy[]
+
+  @@index([tenantId])
+  @@map("business_hours")
+}
+
+model SlaPolicy {
+  id                String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId          String         @map("tenant_id") @db.Uuid
+  tenant            Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name              String
+  priority          String? // match dimension
+  channel           String? // match dimension
+  segment           String? // match dimension
+  departmentId      String?        @map("department_id") @db.Uuid
+  firstResponseMins Int            @map("first_response_mins")
+  resolutionMins    Int            @map("resolution_mins")
+  businessHoursId   String?        @map("business_hours_id") @db.Uuid
+  businessHours     BusinessHours? @relation(fields: [businessHoursId], references: [id])
+
+  @@index([tenantId])
+  @@map("sla_policies")
+}
+
+model SlaEvent {
+  id       String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId String    @map("tenant_id") @db.Uuid
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ticketId String    @map("ticket_id") @db.Uuid
+  ticket   Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  kind     String // first_response | resolution
+  targetAt DateTime  @map("target_at") @db.Timestamptz(6)
+  metAt    DateTime? @map("met_at") @db.Timestamptz(6)
+  breached Boolean   @default(false)
+  // pause/resume support (Guide D.1): working minutes left when ticket went to 'waiting'
+  pausedRemainingMins Int? @map("paused_remaining_mins")
+
+  // partial index (met_at is null) added in rls.sql — Prisma can't express it
+  @@index([tenantId, targetAt])
+  @@map("sla_events")
+}
+
+model EscalationRule {
+  id               String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId         String  @map("tenant_id") @db.Uuid
+  tenant           Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  level            Int // 1..4
+  triggerAfterMins Int     @map("trigger_after_mins")
+  escalateToRole   String? @map("escalate_to_role") // manager | dept_head | regional_lead
+  departmentId     String? @map("department_id") @db.Uuid
+
+  @@index([tenantId, level])
+  @@map("escalation_rules")
+}
+
+model Escalation {
+  id                String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ticketId          String   @map("ticket_id") @db.Uuid
+  ticket            Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  level             Int
+  escalatedToUserId String?  @map("escalated_to_user_id") @db.Uuid
+  escalatedToUser   User?    @relation(fields: [escalatedToUserId], references: [id])
+  reason            String?
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tenantId, ticketId])
+  @@map("escalations")
+}
+
+// ============ AI / KNOWLEDGE ============
+
+model KbArticle {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category  String?
+  title     String
+  body      String
+  language  String   @default("en")
+  status    String   @default("published")
+  version   Int      @default(1)
+  views     Int      @default(0) // UI: KB card view count
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  embeddings KbEmbedding[]
+
+  @@index([tenantId, category])
+  @@map("kb_articles")
+}
+
+model KbEmbedding {
+  id        String                       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId  String                       @map("tenant_id") @db.Uuid
+  tenant    Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  articleId String                       @map("article_id") @db.Uuid
+  article   KbArticle                    @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  chunk     String
+  embedding Unsupported("vector(1536)")? // written via raw SQL (Guide §11.1); ivfflat index in rls.sql
+
+  @@index([tenantId])
+  @@map("kb_embeddings")
+}
+
+model Macro {
+  id       String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId String  @map("tenant_id") @db.Uuid
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  title    String?
+  category String?
+  body     String?
+  uses     Int     @default(0)
+
+  @@index([tenantId])
+  @@map("macros")
+}
+
+model AgentFlow {
+  id         String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId   String @map("tenant_id") @db.Uuid
+  tenant     Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name       String?
+  kind       String @default("chat") // chat | ivr (same node-graph shape, Guide D.2)
+  definition Json // node graph
+  status     String @default("draft")
+
+  @@index([tenantId, kind])
+  @@map("agent_flows")
+}
+
+model Rule {
+  id          String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String  @map("tenant_id") @db.Uuid
+  tenant      Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String?
+  description String? // UI: rule card subtitle
+  enabled     Boolean @default(true)
+  trigger     String? // event type: ticket.created, message.created, ...
+  conditions  Json? // Guide D.2 catalogue
+  actions     Json? // Guide D.2 catalogue
+  runs        Int     @default(0)
+
+  @@index([tenantId, trigger])
+  @@map("rules")
+}
+
+// ============ CHANNELS & TELEPHONY ============
+
+model Channel {
+  id       String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  type     String // whatsapp|instagram|email|voice|...
+  config   Json // encrypted credential refs — never raw secrets
+  status   String @default("connected")
+
+  @@index([tenantId, type])
+  @@map("channels")
+}
+
+model NumberDid {
+  id       String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId String  @map("tenant_id") @db.Uuid
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  number   String
+  type     String? // support | sales | masking | dialer
+  mappedTo String? @map("mapped_to") // IVR flow / queue / campaign name
+  status   String  @default("active")
+
+  @@index([tenantId])
+  @@map("numbers")
+}
+
+model Call {
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  direction    String? // inbound | outbound | masked
+  fromNum      String?  @map("from_num")
+  toNum        String?  @map("to_num")
+  virtualNum   String?  @map("virtual_num")
+  agentId      String?  @map("agent_id") @db.Uuid
+  agent        User?    @relation(fields: [agentId], references: [id])
+  contactId    String?  @map("contact_id") @db.Uuid
+  contact      Contact? @relation(fields: [contactId], references: [id])
+  queueId      String?  @map("queue_id") @db.Uuid
+  queue        Queue?   @relation(fields: [queueId], references: [id])
+  status       String   @default("completed") // ringing | live | completed | abandoned
+  durationS    Int?     @map("duration_s")
+  disposition  String?
+  recordingUrl String?  @map("recording_url") // S3 key; served via presigned GET (Guide D.4)
+  transcript   String?
+  sentiment    String?
+  summary      String? // AI worker: call summary (Voice AI insights pane)
+  qaScore      Int?     @map("qa_score") // AI worker: 0-100
+  ticketId     String?  @map("ticket_id") @db.Uuid
+  ticket       Ticket?  @relation(fields: [ticketId], references: [id])
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  qaAudits QaAudit[]
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
+  @@map("calls")
+}
+
+model Queue {
+  id           String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId     String      @map("tenant_id") @db.Uuid
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name         String // Orders & delivery, Payments, ...
+  skill        String?
+  departmentId String?     @map("department_id") @db.Uuid
+  department   Department? @relation(fields: [departmentId], references: [id])
+  calls        Call[]
+
+  @@index([tenantId])
+  @@map("queues")
+}
+
+// ============ ENGAGE / VoC / OPS ============
+
+model Campaign {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String?
+  channel   String? // whatsapp
+  segment   String?
+  template  String? // message body with {placeholders}
+  status    String? // draft | sending | sent
+  sent      Int      @default(0)
+  delivered Int      @default(0)
+  read      Int      @default(0)
+  replied   Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tenantId])
+  @@map("campaigns")
+}
+
+model Survey {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ticketId  String?  @map("ticket_id") @db.Uuid
+  ticket    Ticket?  @relation(fields: [ticketId], references: [id])
+  contactId String?  @map("contact_id") @db.Uuid
+  contact   Contact? @relation(fields: [contactId], references: [id])
+  type      String? // csat | nps | ces
+  channel   String? // UI: response feed shows source channel
+  score     Decimal?
+  comment   String?
+  sentiment String? // AI worker (VoC themes)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tenantId, type, createdAt])
+  @@map("surveys")
+}
+
+model ServiceVisit {
+  id         String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contactId  String?   @map("contact_id") @db.Uuid
+  contact    Contact?  @relation(fields: [contactId], references: [id])
+  kind       String? // installation | repair | pickup ...
+  address    String?
+  slot       DateTime? @db.Timestamptz(6)
+  technician String?
+  status     String? // scheduled | in_progress | completed
+
+  @@index([tenantId, status])
+  @@map("service_visits")
+}
+
+model QaAudit {
+  id             String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversationId String?  @map("conversation_id") @db.Uuid
+  callId         String?  @map("call_id") @db.Uuid
+  call           Call?    @relation(fields: [callId], references: [id])
+  agentUserId    String?  @map("agent_user_id") @db.Uuid
+  agentUser      User?    @relation(fields: [agentUserId], references: [id])
+  contactId      String?  @map("contact_id") @db.Uuid
+  contact        Contact? @relation(fields: [contactId], references: [id])
+  score          Int?
+  breakdown      Json? // rubric dimensions: {category, empathy, resolution, ...}
+  flagged        Boolean  @default(false)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tenantId, createdAt])
+  @@map("qa_audits")
+}
+
+// ============ GOVERNANCE / ADMIN ============
+
+model AuditLog {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId    String?  @map("user_id") @db.Uuid
+  action    String? // ticket.create, role.change, export, ...
+  entity    String?
+  details   Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tenantId, createdAt])
+  @@map("audit_logs")
+}
+
+model Subscription {
+  id         String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan       String?
+  seats      Int?
+  usage      Json? // filled by usage-metering worker (billing meters UI)
+  cycleStart DateTime? @map("cycle_start") @db.Date
+  cycleEnd   DateTime? @map("cycle_end") @db.Date
+
+  @@index([tenantId])
+  @@map("subscriptions")
+}
+
+// ============ GAP TABLES (Plan §3.1) ============
+
+model AgentStatusRow {
+  id       String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId String   @map("tenant_id") @db.Uuid
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId   String   @unique @map("user_id") @db.Uuid
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status   String   @default("offline") // available|on_call|on_break|offline
+  since    DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([tenantId, userId])
+  @@map("agent_status")
+}
+
+model Shift {
+  id       String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId String    @map("tenant_id") @db.Uuid
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId   String    @map("user_id") @db.Uuid
+  user     User      @relation(fields: [userId], references: [id])
+  name     String // Morning | Evening | Night
+  startsAt DateTime  @map("starts_at") @db.Timestamptz(6)
+  endsAt   DateTime  @map("ends_at") @db.Timestamptz(6)
+  loginAt  DateTime? @map("login_at") @db.Timestamptz(6)
+
+  @@index([tenantId, startsAt])
+  @@map("shifts")
+}
+
+model SocialMention {
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  source       String // facebook|instagram|whatsapp|linkedin|google|x
+  authorName   String?  @map("author_name")
+  authorHandle String?  @map("author_handle")
+  body         String
+  tags         Json     @default("[]")
+  sentiment    String? // pos|neu|neg
+  tough        Boolean  @default(false)
+  botReply     String?  @map("bot_reply")
+  stage        String   @default("detected") // detected|bot_replied|escalated|ticket
+  ticketId     String?  @map("ticket_id") @db.Uuid
+  ticket       Ticket?  @relation(fields: [ticketId], references: [id])
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tenantId, source, createdAt])
+  @@index([tenantId, stage])
+  @@map("social_mentions")
+}
+
+model Notification {
+  id        String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Uuid
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId    String    @map("user_id") @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String // sla.breach | ticket.assigned | mention.tough | ...
+  body      String
+  entity    String?
+  entityId  String?   @map("entity_id") @db.Uuid
+  readAt    DateTime? @map("read_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tenantId, userId, readAt])
+  @@map("notifications")
+}
+
+model Plan {
+  id       String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name     String  @unique // Growth | Business | Enterprise
+  priceInr Decimal @map("price_inr")
+  features Json    @default("[]")
+
+  @@map("plans")
+}
+
+model Invoice {
+  id          String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  extRef      String?   @map("ext_ref") // AQ-INV-...
+  periodStart DateTime? @map("period_start") @db.Date
+  periodEnd   DateTime? @map("period_end") @db.Date
+  amount      Decimal?
+  status      String    @default("due") // due | paid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tenantId])
+  @@map("invoices")
+}
+
+model Invite {
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email        String
+  roleId       String?  @map("role_id") @db.Uuid
+  role         Role?    @relation(fields: [roleId], references: [id])
+  departmentId String?  @map("department_id") @db.Uuid
+  status       String   @default("sent") // sent | accepted | revoked
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tenantId, email])
+  @@map("invites")
+}
+
+model TenantSettings {
+  tenantId       String @id @map("tenant_id") @db.Uuid
+  tenant         Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  priorityMatrix Json   @default("{}") @map("priority_matrix") // urgency×impact grid (D.1 default seeded)
+  toggles        Json   @default("{}") // auto_resolve, hindi_support, sentiment_routing, ...
+  integrations   Json   @default("[]") // connected integration descriptors (Settings view)
+
+  @@map("tenant_settings")
+}
+
+model RefCounter {
+  tenantId String @map("tenant_id") @db.Uuid
+  prefix   String
+  seq      BigInt @default(0)
+
+  @@id([tenantId, prefix])
+  @@map("ref_counters")
+}

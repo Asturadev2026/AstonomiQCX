@@ -1,0 +1,91 @@
+AstronomiQ CX — Developer Requirements & Setup
+================================================
+Read this first. Full context: README.md, then docs/AstronomiQ-CX-Implementation-Plan.md.
+
+NOTE: This is a Node.js/TypeScript project. Package dependencies are NOT listed
+here — they live in each package.json and are version-locked by pnpm-lock.yaml.
+`pnpm install` at the repo root installs everything for all apps/packages.
+This file lists what must exist on YOUR MACHINE before that works.
+
+WHAT'S BUILT vs PLANNED (full table in README.md):
+  BUILT today   : apps/web, packages/{shared,db,config}, infra/docker
+  PLANNED (🚧)  : apps/{api,workers,gateways}, packages/db/src/seed, CI
+So `pnpm --filter @aq/web dev` works now; the API/seed steps below are for the
+next phase and will fail until those parts exist.
+
+------------------------------------------------------------------
+1. SYSTEM PREREQUISITES
+------------------------------------------------------------------
+Node.js         >= 20 LTS        https://nodejs.org  (check: node -v)
+pnpm            9.x              npm install -g pnpm@9   (check: pnpm -v)
+                                 (or: corepack enable — needs admin on Windows)
+Docker Desktop  latest           https://docker.com — runs Postgres/Redis/Keycloak
+                                 locally. Alternative: a cloud Postgres (e.g. Neon)
+                                 with the pgvector extension; set DATABASE_URL.
+Git             any recent       trunk-based on main; PRs reviewed by the other dev
+
+Editor: VS Code recommended, extensions: Prisma, ESLint, Prettier.
+
+------------------------------------------------------------------
+2. FIRST-TIME SETUP (in order)
+------------------------------------------------------------------
+# --- Step 1: install (always) ---
+git clone <repo> && cd astronomiq-cx
+cp .env.example .env                     # local defaults work as-is
+pnpm install                             # all workspaces, one command
+
+# --- Step 2: run the web app (WORKS TODAY) ---
+pnpm --filter @aq/web dev                # frontend → http://localhost:3000
+#   Views show error/empty states until the API exists — that is expected.
+
+# --- Step 3: database + API (NEXT PHASE — some steps fail until built) ---
+# infrastructure (Postgres 16 + pgvector; Redis & Keycloak when needed)
+docker compose -f infra/docker/docker-compose.yml up -d db
+
+# database (needs DATABASE_URL in .env; compose default works out of the box)
+pnpm --filter @aq/db generate            # generate Prisma client
+pnpm --filter @aq/db exec prisma migrate dev --name init
+pnpm --filter @aq/db exec prisma migrate dev --create-only --name rls
+#   → paste packages/db/prisma/rls.sql into the generated migration.sql, then:
+pnpm --filter @aq/db migrate:dev
+pnpm --filter @aq/db seed                # ⚠️ NOT AVAILABLE YET (no src/seed dir)
+
+pnpm --filter @aq/api dev                # ⚠️ API — once apps/api is built (:4000)
+pnpm dev                                 # or: everything at once via turbo
+
+------------------------------------------------------------------
+3. SERVICE PORTS (local)
+------------------------------------------------------------------
+3000  web (Vite dev server; proxies /api → 4000)
+4000  api (NestJS — 🚧 once built)
+5432  PostgreSQL (user aq / pass aq / db astronomiq — dev only)
+6379  Redis
+8080  Keycloak (admin/admin — dev only)
+
+------------------------------------------------------------------
+4. THE FOUR RULES OF THIS REPO
+------------------------------------------------------------------
+1. NO HARDCODED DATA. Every value the UI shows comes from PostgreSQL via the
+   API. Frontend components read ONLY from hooks (apps/web/src/lib/api/hooks.ts).
+   Demo/sample data = database seed rows (packages/db), never code literals.
+2. Every module copies the Tickets pattern (docs Guide §10):
+   DTO in packages/shared → tenant-scoped service (withTenant) → guarded
+   controller → tests → React page + hook.
+3. Every business table has tenant_id + a Row-Level Security policy
+   (packages/db/prisma/rls.sql). All queries run inside withTenant() —
+   outside it, FORCE RLS returns zero rows by design.
+4. UI must match docs/AstronomiQ-CX_1.html exactly. Its CSS is imported
+   verbatim (apps/web/src/styles/prototype.css); port markup 1:1.
+   Porting recipe: apps/web/README.md.
+
+------------------------------------------------------------------
+5. WHERE THINGS LIVE
+------------------------------------------------------------------
+docs/       the 3 source documents (build guide, implementation plan, UI spec)
+packages/   shared/ (types & constants) · db/ (schema, RLS, tenant gate) · config/   [all BUILT]
+apps/       web/ (React SPA) [BUILT] · api/ · workers/ · gateways/  [🚧 planned]
+infra/      docker-compose (local) [BUILT] · terraform & k8s (production, later 🚧)
+
+Full status table and an annotated file tree: README.md.
+
+Build order & task split: docs/AstronomiQ-CX-Implementation-Plan.md §9.

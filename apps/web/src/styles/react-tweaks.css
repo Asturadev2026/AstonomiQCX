@@ -1,0 +1,13 @@
+/* Minimal additions for the React port — prototype.css stays verbatim/untouched. */
+
+/* Sidebar items are <a> (NavLink) instead of the prototype's <button> */
+a.nav,
+a.nav:visited {
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
+/* Sidebar group wrapper (React needs a container per nav group) */
+.side > div:not(.brand):not(.side-foot) {
+  display: contents;
+}
