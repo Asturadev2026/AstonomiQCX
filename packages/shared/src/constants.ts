@@ -111,6 +111,23 @@ export const PERMISSIONS = [
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
+export const CUSTOMER_TYPES = ['individual', 'business'] as const;
+export type CustomerType = (typeof CUSTOMER_TYPES)[number];
+
+export const CUSTOMER_SEGMENTS = ['new', 'regular', 'premium', 'vip'] as const;
+export type CustomerSegment = (typeof CUSTOMER_SEGMENTS)[number];
+
+export const CONTACT_SOURCES = [
+  'website',
+  'whatsapp',
+  'ivr_call',
+  'referral',
+  'walk_in',
+  'social_media',
+  'marketplace',
+] as const;
+export type ContactSource = (typeof CONTACT_SOURCES)[number];
+
 /** Human-ID prefixes used with nextRef() (Guide D.1). */
 export const REF_PREFIXES = {
   ticket: 'AQ-T-',
