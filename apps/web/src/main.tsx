@@ -7,6 +7,7 @@ import { AuthProvider } from './state/auth';
 import { ToastProvider } from './components/Toast';
 import './styles/prototype.css';
 import './styles/react-tweaks.css';
+import './styles/add-customer.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {

@@ -1,0 +1,24 @@
+import { config } from 'dotenv';
+import { resolve } from 'path';
+// Monorepo root .env — apps/api has no .env of its own (Guide §5, Appendix A).
+config({ path: resolve(__dirname, '../../../.env') });
+
+import 'reflect-metadata';
+import { NestFactory } from '@nestjs/core';
+import { ValidationPipe } from '@nestjs/common';
+import { AppModule } from './app.module';
+import { ResponseInterceptor } from './common/response.interceptor';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  app.setGlobalPrefix('api/v1', { exclude: ['health'] });
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.useGlobalInterceptors(new ResponseInterceptor());
+
+  const port = process.env.API_PORT ? Number(process.env.API_PORT) : 4000;
+  await app.listen(port);
+  // eslint-disable-next-line no-console
+  console.log(`AstronomiQ API listening on :${port}`);
+}
+
+bootstrap();
