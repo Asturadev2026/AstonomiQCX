@@ -1,8 +1,14 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import type {
+  ContactDto,
+  ContactOrder,
+  ContactProfile,
+  ContactTicket,
+  CreateContactDto,
   FeedItem,
   NavCounts,
   OverviewPayload,
+  SentimentMonth,
   SessionUser,
 } from './types';
 
@@ -20,6 +26,19 @@ async function api<T>(path: string): Promise<T> {
     throw new Error(`GET /api/v1${path} failed: ${res.status}`);
   }
   const body = (await res.json()) as { data: T };
+  return body.data;
+}
+
+async function post<TBody, TResult>(path: string, payload: TBody): Promise<TResult> {
+  const res = await fetch(`/api/v1${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(`POST /api/v1${path} failed: ${res.status}`);
+  }
+  const body = (await res.json()) as { data: TResult };
   return body.data;
 }
 
@@ -50,5 +69,47 @@ export function useSessionUser() {
     queryKey: ['session', 'user'],
     queryFn: () => api('/me'),
     staleTime: Infinity,
+  });
+}
+
+export function useLatestContact() {
+  return useQuery<ContactProfile>({
+    queryKey: ['contacts', 'latest'],
+    queryFn: () => api('/contacts/latest'),
+  });
+}
+
+export function useContactOrders(contactId: string | undefined) {
+  return useQuery<ContactOrder[]>({
+    queryKey: ['contacts', contactId, 'orders'],
+    queryFn: () => api(`/contacts/${contactId}/orders`),
+    enabled: !!contactId,
+  });
+}
+
+export function useContactTickets(contactId: string | undefined) {
+  return useQuery<ContactTicket[]>({
+    queryKey: ['contacts', contactId, 'tickets'],
+    queryFn: () => api(`/contacts/${contactId}/tickets`),
+    enabled: !!contactId,
+  });
+}
+
+export function useContactTimeline(contactId: string | undefined) {
+  return useQuery<SentimentMonth[]>({
+    queryKey: ['contacts', contactId, 'timeline'],
+    queryFn: () => api(`/contacts/${contactId}/timeline`),
+    enabled: !!contactId,
+  });
+}
+
+export function useCreateContact() {
+  const queryClient = useQueryClient();
+  return useMutation<ContactDto, Error, CreateContactDto>({
+    mutationFn: (payload) => post('/contacts', payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['nav', 'counts'] });
+      void queryClient.invalidateQueries({ queryKey: ['contacts', 'latest'] });
+    },
   });
 }

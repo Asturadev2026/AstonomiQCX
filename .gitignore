@@ -27,3 +27,6 @@ Thumbs.db
 
 # docker volumes (if mapped locally)
 pgdata/
+
+# machine-local compose overrides (e.g. port remaps for port conflicts)
+infra/docker/docker-compose.override.yml

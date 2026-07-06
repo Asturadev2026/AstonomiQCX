@@ -5,7 +5,8 @@ import { viewById } from '../lib/views';
 
 export function AppShell() {
   const { pathname } = useLocation();
-  const view = viewById(pathname.replace(/^\//, '')) ?? viewById('overview')!;
+  const rootSegment = pathname.replace(/^\//, '').split('/')[0] ?? '';
+  const view = viewById(rootSegment) ?? viewById('overview')!;
 
   return (
     <div className="app">

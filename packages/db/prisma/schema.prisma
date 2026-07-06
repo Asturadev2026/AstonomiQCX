@@ -147,14 +147,33 @@ model Contact {
   id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   tenantId      String   @map("tenant_id") @db.Uuid
   tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customerType  String   @default("individual") @map("customer_type") // individual | business
   name          String?
   phone         String?
+  altPhone      String?  @map("alt_phone")
   email         String?
+  company       String? // business customers only
+  industry      String?
+  gstin         String?
+  addressLine1  String?  @map("address_line1")
+  addressLine2  String?  @map("address_line2")
+  city          String?
+  state         String?
+  pincode       String?
+  landmark      String?
   location      String? // UI: inbox copilot + C360 profile
   language      String?  @default("en")
   loyaltyTier   String?  @map("loyalty_tier")
   lifetimeValue Decimal  @default(0) @map("lifetime_value")
-  segment       String? // gold | vip | regular ... (campaign segments)
+  segment       String? // new | regular | premium | vip (campaign segments)
+  source        String? // website | whatsapp | ivr_call | referral | walk_in | social_media | marketplace
+  assignedTo    String?  @map("assigned_to") // queue name or "Name (Agent)" — Plan §5 leaves this a string until agent/queue tables carry FKs
+  tags          Json     @default("[]")
+  consentWhatsapp Boolean @default(true) @map("consent_whatsapp")
+  consentSms      Boolean @default(true) @map("consent_sms")
+  consentEmail    Boolean @default(false) @map("consent_email")
+  consentCall     Boolean @default(false) @map("consent_call")
+  notes         String?
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   orders        Order[]
@@ -177,7 +196,8 @@ model Order {
   contactId   String?  @map("contact_id") @db.Uuid
   contact     Contact? @relation(fields: [contactId], references: [id])
   extRef      String?  @map("ext_ref") // ZK-483920 style human id
-  description String?
+  description String? // product/order description
+  qty         Int?     @default(1)
   amount      Decimal?
   status      String? // delivered | in_transit | refunded ...
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)

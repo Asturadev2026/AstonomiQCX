@@ -57,3 +57,53 @@ export interface FeedItem {
   tag: 'res' | 'esc' | 'ai';
   time: string;
 }
+
+// POST /api/v1/contacts — request/response shapes mirror
+// @aq/shared's CreateContactDto/ContactDto (Guide §10 pattern).
+export type { ContactConsentDto, ContactDto, CreateContactDto, CreateContactOrderDto } from '@aq/shared';
+
+// GET /api/v1/contacts/latest, GET /api/v1/contacts/:id — Customer 360 profile card.
+export interface ContactProfile {
+  id: string;
+  name: string;
+  location: string | null;
+  memberSince: string; // ISO date
+  orderCount: number;
+  lifetimeValue: number;
+  loyaltyTier: string | null;
+  sentiment: 'pos' | 'neu' | 'neg' | null;
+  phone: string | null;
+  email: string | null;
+  language: string | null;
+  preferredChannel: string | null;
+  openTickets: number;
+}
+
+// GET /api/v1/contacts/:id/orders
+export interface ContactOrder {
+  id: string;
+  extRef: string | null;
+  description: string | null;
+  amount: number | null;
+  status: string | null; // delivered | in_transit | refunded
+  createdAt: string;
+}
+
+// GET /api/v1/contacts/:id/tickets
+export interface ContactTicket {
+  id: string;
+  extRef: string | null;
+  subject: string;
+  channel: string | null;
+  status: string;
+  createdAt: string;
+}
+
+// GET /api/v1/contacts/:id/timeline — last 6 months, sentiment mix per month.
+export interface SentimentMonth {
+  label: string;
+  pos: number;
+  neu: number;
+  neg: number;
+  dominant: 'pos' | 'neu' | 'neg' | null;
+}
