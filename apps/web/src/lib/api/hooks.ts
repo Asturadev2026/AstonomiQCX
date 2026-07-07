@@ -6,6 +6,7 @@ import type {
   ContactTicket,
   CreateContactDto,
   FeedItem,
+  JourneyPayload,
   NavCounts,
   OverviewPayload,
   SentimentMonth,
@@ -54,6 +55,13 @@ export function useOverview() {
   return useQuery<OverviewPayload>({
     queryKey: ['analytics', 'overview'],
     queryFn: () => api('/analytics/overview'),
+  });
+}
+
+export function useJourney() {
+  return useQuery<JourneyPayload>({
+    queryKey: ['journey'],
+    queryFn: () => api('/journey/summary'),
   });
 }
 

@@ -49,6 +49,33 @@ export interface OverviewPayload {
   resolution: ResolutionMix;
 }
 
+// GET /api/v1/journey
+export interface JourneyStageMetric {
+  label: string;
+  value: string;
+}
+export interface JourneyStage {
+  name: string;
+  icon: string;
+  color: string;
+  description: string;
+  metrics: JourneyStageMetric[];
+}
+export interface FrictionPoint {
+  label: string;
+  pct: number;
+  color: string;
+}
+export interface ProactiveNudge {
+  trigger: string;
+  status: 'live' | 'draft';
+}
+export interface JourneyPayload {
+  stages: JourneyStage[];
+  friction: FrictionPoint[];
+  nudges: ProactiveNudge[];
+}
+
 // GET /api/v1/activity/feed
 export interface FeedItem {
   icon: string;
