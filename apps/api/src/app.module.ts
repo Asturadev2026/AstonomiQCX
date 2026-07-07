@@ -1,10 +1,11 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { ContactsModule } from './contacts/contacts.module';
+import { JourneyModule } from './journey/journey.module';
 import { TenantMiddleware } from './tenancy/tenant.middleware';
 
 @Module({
-  imports: [ContactsModule],
+  imports: [ContactsModule, JourneyModule],
   controllers: [AppController],
 })
 export class AppModule implements NestModule {
