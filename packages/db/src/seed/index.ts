@@ -1,10 +1,30 @@
 import { getPrisma } from '../client';
+import { withTenant } from '../with-tenant';
+import { nextRef } from '../next-ref';
 
 /**
- * Minimal dev seed — just enough for local API calls to have a tenant to
- * scope to. Subdomain matches APP_URL in .env.example (shopnova.localtest.me).
- * Full demo data per view is a separate, much larger effort (Plan §3.3).
+ * Dev seed — a tenant, plus enough tickets/surveys/rules/contacts+orders for
+ * the Customer Journey aggregation (Journey summary endpoint, Plan §3.3) to
+ * compute non-trivial numbers. Guarded by ticket count so re-running
+ * `pnpm seed` doesn't duplicate rows.
  */
+
+const TICKET_CATEGORIES = [
+  { label: 'Cart abandoned at payment', count: 10 },
+  { label: 'Delivery ETA unclear', count: 7 },
+  { label: 'Return process confusion', count: 6 },
+  { label: 'Coupon not applying', count: 4 },
+  { label: 'Login/OTP issues', count: 3 },
+];
+
+const NUDGE_RULES = [
+  { name: 'Cart abandoned → WhatsApp reminder', trigger: 'cart_abandoned', enabled: true },
+  { name: 'Delivery delayed → proactive SMS', trigger: 'delivery_delayed', enabled: true },
+  { name: 'Post-delivery → CSAT survey', trigger: 'order_delivered', enabled: true },
+  { name: 'No order 60 days → win-back offer', trigger: 'no_order_60d', enabled: true },
+  { name: 'Warranty expiring → AMC renewal', trigger: 'warranty_expiring', enabled: false },
+];
+
 async function main() {
   const prisma = getPrisma();
   const tenant = await prisma.tenant.upsert({
@@ -13,6 +33,110 @@ async function main() {
     create: { name: 'Shopnova', subdomain: 'shopnova' },
   });
   console.log(`Seeded tenant: ${tenant.name} (${tenant.id})`);
+
+  await withTenant(prisma, tenant.id, async (tx) => {
+    const existingTickets = await tx.ticket.count();
+    if (existingTickets > 0) {
+      console.log('Demo data already seeded — skipping (tickets exist).');
+      return;
+    }
+
+    // 25 extra contacts: 5 with no orders, 10 with exactly one, 10 repeat buyers (2-3 orders).
+    const newContacts = [];
+    for (let i = 0; i < 25; i++) {
+      newContacts.push(
+        await tx.contact.create({
+          data: {
+            tenantId: tenant.id,
+            name: `Demo Contact ${i + 1}`,
+            phone: `9${(700000000 + i).toString()}`,
+            email: `demo.contact${i + 1}@example.com`,
+          },
+        }),
+      );
+    }
+
+    const ordersPerContact = (index: number) => {
+      if (index < 5) return 0;
+      if (index < 15) return 1;
+      return 2 + (index % 2); // 2 or 3
+    };
+    for (let i = 0; i < newContacts.length; i++) {
+      const n = ordersPerContact(i);
+      for (let j = 0; j < n; j++) {
+        await tx.order.create({
+          data: {
+            tenantId: tenant.id,
+            contactId: newContacts[i].id,
+            extRef: await nextRef(tx, tenant.id, 'ZK-'),
+            description: 'Demo order',
+            amount: 999 + j * 250,
+            status: 'delivered',
+          },
+        });
+      }
+    }
+
+    const allContacts = await tx.contact.findMany({ select: { id: true } });
+
+    // Tickets across the 5 friction categories, mostly resolved.
+    let created = 0;
+    for (const { label, count } of TICKET_CATEGORIES) {
+      for (let i = 0; i < count; i++) {
+        const isResolved = created % 5 !== 0; // ~80% resolved
+        await tx.ticket.create({
+          data: {
+            tenantId: tenant.id,
+            extRef: await nextRef(tx, tenant.id, 'AQ-T-'),
+            contactId: allContacts[created % allContacts.length]?.id,
+            subject: label,
+            category: label,
+            status: isResolved ? 'resolved' : 'in_progress',
+          },
+        });
+        created++;
+      }
+    }
+
+    // Escalate a handful of resolved tickets so FCR isn't 100%.
+    const resolvedTickets = await tx.ticket.findMany({ where: { status: 'resolved' }, select: { id: true } });
+    for (const t of resolvedTickets.slice(0, 5)) {
+      await tx.escalation.create({
+        data: { tenantId: tenant.id, ticketId: t.id, level: 1, reason: 'No response within SLA window' },
+      });
+    }
+
+    // CSAT tied to resolved tickets (Support stage).
+    const csatScores = [4, 4, 5, 5, 5, 3, 4, 5, 4, 5, 5, 4, 5, 4, 5];
+    await Promise.all(
+      resolvedTickets
+        .slice(0, csatScores.length)
+        .map((t, i) => tx.survey.create({ data: { tenantId: tenant.id, ticketId: t.id, type: 'csat', score: csatScores[i] } })),
+    );
+
+    // CSAT not tied to a ticket — post-delivery survey (Onboarding stage).
+    const onboardingCsat = [5, 4, 5, 5, 4, 5, 3, 5, 4, 5];
+    await Promise.all(
+      newContacts
+        .slice(0, onboardingCsat.length)
+        .map((c, i) => tx.survey.create({ data: { tenantId: tenant.id, contactId: c.id, type: 'csat', score: onboardingCsat[i] } })),
+    );
+
+    // NPS — 14 promoters, 4 passives, 2 detractors → NPS ≈ +60.
+    const npsScores = [10, 9, 10, 9, 9, 10, 10, 9, 10, 9, 10, 9, 10, 9, 8, 7, 8, 7, 4, 6];
+    await Promise.all(
+      newContacts
+        .slice(0, npsScores.length)
+        .map((c, i) => tx.survey.create({ data: { tenantId: tenant.id, contactId: c.id, type: 'nps', score: npsScores[i] } })),
+    );
+
+    // Proactive nudges — automation rules behind the Journey "nudges firing" panel.
+    await tx.rule.createMany({
+      data: NUDGE_RULES.map((r) => ({ tenantId: tenant.id, ...r })),
+    });
+
+    console.log(`Seeded ${newContacts.length} contacts, ${created} tickets, surveys and ${NUDGE_RULES.length} rules.`);
+  });
 }
 
 main()
