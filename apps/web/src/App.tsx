@@ -6,12 +6,14 @@ import { VIEWS } from './lib/views';
 import { CommandCentre } from './modules/overview/CommandCentre';
 import { AddCustomer } from './modules/customer/AddCustomer';
 import { CustomerProfile } from './modules/customer/CustomerProfile';
+import { CustomerJourney } from './modules/journey/CustomerJourney';
 import { StubPage } from './components/StubPage';
 
 /** Views with a finished port register here; everything else renders its stub. */
 const PORTED: Record<string, () => JSX.Element | null> = {
   overview: CommandCentre,
   customer: CustomerProfile,
+  journey: CustomerJourney,
 };
 
 export function App() {
