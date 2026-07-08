@@ -28,8 +28,13 @@ const schema = z.object({
   EXOTEL_API_TOKEN: z.string().optional(),
   EXOTEL_SUBDOMAIN: z.string().optional(),
 
+  // LLM_PROVIDER forces a choice; otherwise Astra auto-picks whichever key is
+  // set (Anthropic first) — see apps/api/src/ai/llm.ts.
+  LLM_PROVIDER: z.enum(['anthropic', 'openai']).optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   LLM_MODEL: z.string().optional(),
+  OPENAI_API_KEY: z.string().optional(),
+  OPENAI_MODEL: z.string().optional(),
   EMBEDDINGS_MODEL: z.string().optional(),
   SARVAM_API_KEY: z.string().optional(),
   ELEVENLABS_API_KEY: z.string().optional(),
