@@ -1,5 +1,7 @@
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import type {
+  AskAstraPayload,
+  AstraAnswer,
   ContactDto,
   ContactOrder,
   ContactProfile,
@@ -21,8 +23,14 @@ import type {
  * their loading/error UI. That is correct behaviour for a real application.
  */
 
+// Dev-only stand-in for real subdomain routing (Guide §6.2): the Vite proxy
+// strips the browser's real Host before forwarding to the API, so there is
+// no subdomain for TenantMiddleware to read. Replace with the tenant from
+// the logged-in session once login (Guide §7) is wired into the web app.
+const DEV_TENANT_HEADER = { 'x-tenant': 'shopnova' };
+
 async function api<T>(path: string): Promise<T> {
-  const res = await fetch(`/api/v1${path}`);
+  const res = await fetch(`/api/v1${path}`, { headers: DEV_TENANT_HEADER });
   if (!res.ok) {
     throw new Error(`GET /api/v1${path} failed: ${res.status}`);
   }
@@ -33,7 +41,7 @@ async function api<T>(path: string): Promise<T> {
 async function post<TBody, TResult>(path: string, payload: TBody): Promise<TResult> {
   const res = await fetch(`/api/v1${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...DEV_TENANT_HEADER },
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
@@ -119,5 +127,11 @@ export function useCreateContact() {
       void queryClient.invalidateQueries({ queryKey: ['nav', 'counts'] });
       void queryClient.invalidateQueries({ queryKey: ['contacts', 'latest'] });
     },
+  });
+}
+
+export function useAskAstra() {
+  return useMutation<AstraAnswer, Error, AskAstraPayload>({
+    mutationFn: (payload) => post('/ai/ask', payload),
   });
 }

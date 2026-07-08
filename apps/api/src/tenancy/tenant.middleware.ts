@@ -4,26 +4,28 @@ import { getPrisma } from '@aq/db';
 
 export interface TenantScopedRequest extends Request {
   tenantId: string;
+  tenantName: string;
 }
 
 /**
- * TODO(Phase B — Guide §7/§8): resolve tenant from subdomain and verify the
- * Keycloak JWT (JwtGuard + PermissionsGuard per the Tickets pattern).
- * Neither exists yet — apps/web's Login page has no real auth flow either
- * (it opens the workspace without verification). Until then, this is a
- * single-tenant local-dev stand-in: every request is scoped to the one
- * seeded tenant (`pnpm --filter @aq/db seed`).
+ * Finds the company for a request (Guide §6.2) — from the subdomain in
+ * production (e.g. shopnova.app.astronomiq.in), or from an `x-tenant` header
+ * for local dev, where the Vite proxy strips the browser's real Host before
+ * forwarding to the API (changeOrigin: true in apps/web/vite.config.ts).
  */
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
   async use(req: Request, _res: Response, next: NextFunction) {
-    const tenant = await getPrisma().tenant.findFirst();
-    if (!tenant) {
-      throw new NotFoundException(
-        'No tenant seeded — run `pnpm --filter @aq/db seed`',
-      );
+    const subdomain =
+      (req.headers['x-tenant'] as string) ||
+      ((req.headers['x-forwarded-host'] as string) || req.hostname).split('.')[0];
+
+    const tenant = await getPrisma().tenant.findUnique({ where: { subdomain } });
+    if (!tenant || tenant.status !== 'active') {
+      throw new NotFoundException('Workspace not found');
     }
     (req as TenantScopedRequest).tenantId = tenant.id;
+    (req as TenantScopedRequest).tenantName = tenant.name;
     next();
   }
 }

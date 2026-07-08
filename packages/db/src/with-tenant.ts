@@ -20,8 +20,11 @@ export async function withTenant<T>(
     // guards the raw SQL below against injection and catches bad callers early
     throw new Error(`withTenant: invalid tenant id "${tenantId}"`);
   }
-  return prisma.$transaction(async (tx: Tx) => {
-    await tx.$executeRawUnsafe(`SET LOCAL app.tenant = '${tenantId}'`);
-    return fn(tx);
-  });
+  return prisma.$transaction(
+    async (tx: Tx) => {
+      await tx.$executeRawUnsafe(`SET LOCAL app.tenant = '${tenantId}'`);
+      return fn(tx);
+    },
+    { timeout: 60_000 },
+  );
 }

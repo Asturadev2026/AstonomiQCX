@@ -12,6 +12,20 @@ export interface NavCounts {
   unreadNotifications: number;
 }
 
+// POST /api/v1/ai/ask
+export interface AskAstraPayload {
+  question: string;
+  language?: string;
+}
+
+export interface AstraAnswer {
+  answer: string | null;
+  escalate: boolean;
+  configured: boolean;
+  sources: string[];
+  ticketRef: string | null;
+}
+
 // GET /api/v1/me
 export interface SessionUser {
   name: string;

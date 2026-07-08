@@ -17,12 +17,66 @@ const TICKET_CATEGORIES = [
   { label: 'Login/OTP issues', count: 3 },
 ];
 
+// Knowledge Base articles (Guide §10) — Astra answers only from these.
+const KB_ARTICLES = [
+  {
+    title: 'Delivery times and tracking',
+    category: 'Delivery',
+    body: 'Standard delivery takes 3-5 business days; express delivery takes 1-2 business days. You can track your order anytime from Order History — every order gets a tracking link by SMS and email once it ships. If your order is delayed beyond the estimated date, contact support with your order reference (format ZK-xxxxx) and we will check with the courier and update you within 24 hours.',
+  },
+  {
+    title: 'Returns and refunds policy',
+    category: 'Returns',
+    body: 'Items can be returned within 7 days of delivery if unused and in original packaging. Start a return from Order History by selecting "Return item". Once the returned item is received and inspected, refunds are processed to the original payment method within 5-7 business days. Refunds cannot be issued for items marked non-returnable at purchase (e.g. innerwear, perishables) or after the 7-day window.',
+  },
+  {
+    title: 'Applying a coupon code',
+    category: 'Coupons',
+    body: 'Enter your coupon code at checkout in the "Apply coupon" field before placing the order — coupons cannot be applied after an order is placed. Common reasons a coupon fails: it has expired, the cart total is below the minimum spend for that coupon, or the coupon is restricted to specific categories that are not in your cart. Each coupon code can only be used once per account.',
+  },
+  {
+    title: 'Login and OTP troubleshooting',
+    category: 'Account',
+    body: 'The login OTP is sent by SMS to your registered mobile number and is valid for 5 minutes. If you do not receive it, check that your number is entered correctly, wait 60 seconds and use "Resend OTP", and confirm your phone has network signal. If OTP issues continue after 3 attempts, contact support to verify your account and registered number.',
+  },
+];
+
 const NUDGE_RULES = [
   { name: 'Cart abandoned → WhatsApp reminder', trigger: 'cart_abandoned', enabled: true },
   { name: 'Delivery delayed → proactive SMS', trigger: 'delivery_delayed', enabled: true },
   { name: 'Post-delivery → CSAT survey', trigger: 'order_delivered', enabled: true },
   { name: 'No order 60 days → win-back offer', trigger: 'no_order_60d', enabled: true },
   { name: 'Warranty expiring → AMC renewal', trigger: 'warranty_expiring', enabled: false },
+];
+
+// Default roles (Guide §7.5), using the canonical permission strings from
+// @aq/shared's PERMISSIONS list. Admin's '*' means "can do everything" — see
+// PermissionsGuard in apps/api/src/auth/permissions.guard.ts.
+const DEFAULT_ROLES = [
+  { name: 'Admin', permissions: ['*'] },
+  {
+    name: 'Manager',
+    permissions: ['ticket.view.all', 'ticket.create', 'ticket.move', 'ticket.assign', 'sla.view', 'refund.approve', 'analytics.view', 'audit.view'],
+  },
+  {
+    name: 'TeamLead',
+    permissions: ['ticket.view.all', 'ticket.create', 'ticket.move', 'ticket.assign', 'sla.view'],
+  },
+  {
+    name: 'Agent',
+    permissions: ['ticket.view.assigned', 'ticket.move', 'conversation.view', 'conversation.reply'],
+  },
+  { name: 'QA', permissions: ['conversation.view', 'qa.view', 'qa.audit'] },
+  { name: 'Viewer', permissions: ['analytics.view'] },
+];
+
+// One default SLA policy per priority (Guide §8.3/§11) — without these,
+// SlaService.startTimers() has nothing to attach to a new ticket.
+const DEFAULT_SLA_POLICIES = [
+  { priority: 'p1', name: 'P1 — Urgent', firstResponseMins: 15, resolutionMins: 120 },
+  { priority: 'p2', name: 'P2 — High', firstResponseMins: 30, resolutionMins: 240 },
+  { priority: 'p3', name: 'P3 — Medium', firstResponseMins: 60, resolutionMins: 480 },
+  { priority: 'p4', name: 'P4 — Low', firstResponseMins: 120, resolutionMins: 1440 },
 ];
 
 async function main() {
@@ -33,6 +87,39 @@ async function main() {
     create: { name: 'Shopnova', subdomain: 'shopnova' },
   });
   console.log(`Seeded tenant: ${tenant.name} (${tenant.id})`);
+
+  for (const role of DEFAULT_ROLES) {
+    await prisma.role.upsert({
+      where: { tenantId_name: { tenantId: tenant.id, name: role.name } },
+      update: { permissions: role.permissions },
+      create: { tenantId: tenant.id, name: role.name, permissions: role.permissions },
+    });
+  }
+  console.log(`Seeded ${DEFAULT_ROLES.length} default roles.`);
+
+  await withTenant(prisma, tenant.id, async (tx) => {
+    for (const policy of DEFAULT_SLA_POLICIES) {
+      const existing = await tx.slaPolicy.findFirst({
+        where: { tenantId: tenant.id, priority: policy.priority },
+      });
+      if (!existing) {
+        await tx.slaPolicy.create({ data: { tenantId: tenant.id, ...policy } });
+      }
+    }
+    console.log(`Seeded ${DEFAULT_SLA_POLICIES.length} default SLA policies.`);
+  });
+
+  await withTenant(prisma, tenant.id, async (tx) => {
+    for (const article of KB_ARTICLES) {
+      const existing = await tx.kbArticle.findFirst({
+        where: { tenantId: tenant.id, title: article.title },
+      });
+      if (!existing) {
+        await tx.kbArticle.create({ data: { tenantId: tenant.id, ...article } });
+      }
+    }
+    console.log(`Seeded ${KB_ARTICLES.length} KB articles.`);
+  });
 
   await withTenant(prisma, tenant.id, async (tx) => {
     const existingTickets = await tx.ticket.count();
@@ -67,7 +154,7 @@ async function main() {
         await tx.order.create({
           data: {
             tenantId: tenant.id,
-            contactId: newContacts[i].id,
+            contactId: newContacts[i]!.id,
             extRef: await nextRef(tx, tenant.id, 'ZK-'),
             description: 'Demo order',
             amount: 999 + j * 250,

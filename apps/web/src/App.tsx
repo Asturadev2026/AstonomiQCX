@@ -7,6 +7,7 @@ import { CommandCentre } from './modules/overview/CommandCentre';
 import { AddCustomer } from './modules/customer/AddCustomer';
 import { CustomerProfile } from './modules/customer/CustomerProfile';
 import { CustomerJourney } from './modules/journey/CustomerJourney';
+import { AiChatbot } from './modules/chatbot/AiChatbot';
 import { StubPage } from './components/StubPage';
 
 /** Views with a finished port register here; everything else renders its stub. */
@@ -14,6 +15,7 @@ const PORTED: Record<string, () => JSX.Element | null> = {
   overview: CommandCentre,
   customer: CustomerProfile,
   journey: CustomerJourney,
+  chatbot: AiChatbot,
 };
 
 export function App() {
