@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { getPrisma } from '../client';
 import { withTenant } from '../with-tenant';
 import { nextRef } from '../next-ref';
@@ -40,6 +41,130 @@ const KB_ARTICLES = [
     body: 'The login OTP is sent by SMS to your registered mobile number and is valid for 5 minutes. If you do not receive it, check that your number is entered correctly, wait 60 seconds and use "Resend OTP", and confirm your phone has network signal. If OTP issues continue after 3 attempts, contact support to verify your account and registered number.',
   },
 ];
+
+// Comments carry keyword phrases the Surveys service tags into VoC themes
+// (fast resolution / friendly agents / delivery delays / refund speed / app issues).
+const CSAT_COMMENTS = [
+  'Astra sorted my refund in 2 minutes, super fast resolution!',
+  'Delivery was late again, third time this month.',
+  'The agent was so friendly and patient with me.',
+  'Refund took over a week, refund speed needs work.',
+  'App keeps crashing when I try to track my order.',
+  'Quick help, resolved on the first try.',
+  'Delivery delayed by 3 days with no update.',
+  'Really friendly and helpful support team.',
+  'Fast resolution, didn\'t expect it to be this smooth.',
+  'App issues — checkout button doesn\'t respond.',
+];
+
+const CHANNELS = ['WhatsApp', 'Voice', 'Chat', 'Email'];
+
+// Spreads survey createdAt across the last 8 weeks so the CSAT trend chart
+// (Surveys & VoC) has real week-over-week variation instead of one spike today.
+function weekDate(weekIndex: number): Date {
+  const d = new Date();
+  d.setDate(d.getDate() - (7 - weekIndex) * 7 - Math.floor(Math.random() * 6));
+  return d;
+}
+
+// Past WhatsApp broadcasts — createdAt spread over the last month so "Recent campaigns"
+// (Campaigns view) lists them most-recent-first in this order.
+const PAST_CAMPAIGNS = [
+  { name: 'Monsoon Sale blast', daysAgo: 3, sent: 1000, delivered: 980, read: 720, replied: 50 },
+  { name: 'Cart reminder — electronics', daysAgo: 10, sent: 1000, delivered: 950, read: 400, replied: 180 },
+  { name: 'CSAT feedback request', daysAgo: 18, sent: 1000, delivered: 970, read: 640, replied: 80 },
+  { name: 'Diwali early access', daysAgo: 25, sent: 1000, delivered: 980, read: 810, replied: 120 },
+];
+
+// Published KB articles behind the Self-Service Portal's category tiles — counts come
+// straight from a groupBy, so the tile copy below just needs enough titles per category.
+const PORTAL_KB_ARTICLES: { category: string; title: string }[] = [
+  { category: 'Orders & delivery', title: 'How to track your order' },
+  { category: 'Orders & delivery', title: 'What does "out for delivery" mean?' },
+  { category: 'Orders & delivery', title: 'Delivery is late — what now?' },
+  { category: 'Orders & delivery', title: 'Can I change my delivery address?' },
+  { category: 'Orders & delivery', title: 'Same-day delivery eligibility' },
+  { category: 'Orders & delivery', title: 'Tracking shows no updates' },
+  { category: 'Orders & delivery', title: 'Order marked delivered but not received' },
+  { category: 'Orders & delivery', title: 'Scheduling a delivery slot' },
+  { category: 'Returns & refunds', title: 'How to start a return' },
+  { category: 'Returns & refunds', title: 'Refund timelines by payment method' },
+  { category: 'Returns & refunds', title: 'Return pickup not scheduled' },
+  { category: 'Returns & refunds', title: 'Exchanging a product for a different size' },
+  { category: 'Returns & refunds', title: 'Items not eligible for return' },
+  { category: 'Returns & refunds', title: 'Refund stuck — how to check status' },
+  { category: 'Payments & EMI', title: 'Available EMI options' },
+  { category: 'Payments & EMI', title: 'Payment failed but amount deducted' },
+  { category: 'Payments & EMI', title: 'Applying a coupon code at checkout' },
+  { category: 'Payments & EMI', title: 'Adding a new payment method' },
+  { category: 'Payments & EMI', title: 'Understanding your invoice' },
+  { category: 'Account & app', title: 'Resetting your password' },
+  { category: 'Account & app', title: 'OTP not received' },
+  { category: 'Account & app', title: 'Updating your profile details' },
+  { category: 'Account & app', title: 'App keeps crashing on checkout' },
+  { category: 'Account & app', title: 'Deleting your account' },
+  { category: 'Warranty & repair', title: 'Registering your product warranty' },
+  { category: 'Warranty & repair', title: 'Booking a repair visit' },
+  { category: 'Warranty & repair', title: 'Warranty claim rejected — next steps' },
+  { category: 'Warranty & repair', title: 'Extending your warranty (AMC)' },
+];
+
+// Agents behind Auto QA's leaderboard and the AI-vs-human split in conversations/QA audits.
+// index 0 (Kavya Menon) is the team lead — excluded from the agent-assignment rotation below.
+const AGENT_USERS = [
+  { name: 'Kavya Menon', email: 'kavya.menon@shopnova.in', avatarColor: '#2563EB', title: 'Team Lead' },
+  { name: 'Aditya Nair', email: 'aditya.nair@shopnova.in', avatarColor: '#4F46E5', title: 'Senior Agent · BFSI' },
+  { name: 'Priya Sharma', email: 'priya.sharma@shopnova.in', avatarColor: '#0EA5E9', title: 'Agent · Retail' },
+  { name: 'Meera Joshi', email: 'meera.joshi@shopnova.in', avatarColor: '#E08A00', title: 'Agent · Travel' },
+  { name: 'Rahul Verma', email: 'rahul.verma@shopnova.in', avatarColor: '#16A34A', title: 'Agent · Retail' },
+];
+
+function weighted<T>(pairs: [T, number][]): T[] {
+  const out: T[] = [];
+  for (const [value, count] of pairs) for (let i = 0; i < count; i++) out.push(value);
+  // Shuffle so consecutive conversations don't streak on the same value — pairs are built
+  // as contiguous same-value blocks, which would otherwise cluster in any short window
+  // (e.g. the "recent audits" list) even though the overall distribution stays correct.
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+// 100-entry weighted pools — index by `i % pool.length` to distribute conversations
+// realistically across channel/language/intent/sentiment without needing true randomness.
+const CONV_CHANNELS = weighted<string>([['whatsapp', 45], ['chat', 20], ['voice', 15], ['email', 12], ['instagram', 8]]);
+const CONV_LANGUAGES = weighted<string>([['en', 52], ['hi', 28], ['ta', 7], ['te', 6], ['bn', 4], ['mr', 3]]);
+const CONV_INTENTS = weighted<string>([
+  ['order_tracking', 34],
+  ['refund', 26],
+  ['delivery_delay', 18],
+  ['product_enquiry', 12],
+  ['emi_payment', 10],
+]);
+const CONV_SENTIMENTS = weighted<string>([['pos', 60], ['neu', 25], ['neg', 15]]);
+// Hour-of-day pool shaped like real support volume — lunch (12-13h) and evening (20-21h) peaks.
+const CONV_HOURS = weighted<number>([
+  [9, 2], [10, 3], [11, 3], [12, 5], [13, 4], [14, 3], [15, 3], [16, 3], [17, 3], [18, 4], [19, 4], [20, 5], [21, 3],
+]);
+const INTENT_LABELS: Record<string, string> = {
+  order_tracking: 'Order tracking',
+  refund: 'Refunds & returns',
+  delivery_delay: 'Delivery delay',
+  product_enquiry: 'Product enquiry',
+  emi_payment: 'EMI & payment',
+};
+
+// Conversation volume per day, last 14 days (index 0 = 13 days ago .. index 13 = today) —
+// shaped like a growing trend so Analytics' line chart isn't flat. AI-resolved is the subset
+// with no assigned human agent.
+const DAILY_TOTAL = [5, 6, 6, 6, 6, 7, 7, 7, 8, 8, 8, 9, 9, 9];
+const DAILY_AI = [3, 4, 3, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 8];
+
+function randInt(min: number, max: number): number {
+  return min + Math.floor(Math.random() * (max - min + 1));
+}
 
 const NUDGE_RULES = [
   { name: 'Cart abandoned → WhatsApp reminder', trigger: 'cart_abandoned', enabled: true },
@@ -129,6 +254,8 @@ async function main() {
     }
 
     // 25 extra contacts: 5 with no orders, 10 with exactly one, 10 repeat buyers (2-3 orders).
+    // Repeat buyers (15-24) double as the "Gold loyalty members" campaign audience; a
+    // cross-tier slice (10-19) is tagged as "festive_shopper" for the Festive shoppers audience.
     const newContacts = [];
     for (let i = 0; i < 25; i++) {
       newContacts.push(
@@ -138,6 +265,8 @@ async function main() {
             name: `Demo Contact ${i + 1}`,
             phone: `9${(700000000 + i).toString()}`,
             email: `demo.contact${i + 1}@example.com`,
+            loyaltyTier: i >= 15 ? 'Gold' : i >= 5 ? 'Silver' : null,
+            tags: i >= 10 && i < 20 ? ['festive_shopper'] : [],
           },
         }),
       );
@@ -186,27 +315,52 @@ async function main() {
     }
 
     // Escalate a handful of resolved tickets so FCR isn't 100%.
-    const resolvedTickets = await tx.ticket.findMany({ where: { status: 'resolved' }, select: { id: true } });
+    const resolvedTickets = await tx.ticket.findMany({ where: { status: 'resolved' }, select: { id: true, createdAt: true } });
     for (const t of resolvedTickets.slice(0, 5)) {
       await tx.escalation.create({
         data: { tenantId: tenant.id, ticketId: t.id, level: 1, reason: 'No response within SLA window' },
       });
     }
 
-    // CSAT tied to resolved tickets (Support stage).
+    // CSAT tied to resolved tickets (Support stage), spread across 8 weeks for the trend chart.
     const csatScores = [4, 4, 5, 5, 5, 3, 4, 5, 4, 5, 5, 4, 5, 4, 5];
     await Promise.all(
       resolvedTickets
         .slice(0, csatScores.length)
-        .map((t, i) => tx.survey.create({ data: { tenantId: tenant.id, ticketId: t.id, type: 'csat', score: csatScores[i] } })),
+        .map((t, i) =>
+          tx.survey.create({
+            data: {
+              tenantId: tenant.id,
+              ticketId: t.id,
+              type: 'csat',
+              score: csatScores[i],
+              channel: CHANNELS[i % CHANNELS.length],
+              createdAt: weekDate(i % 8),
+            },
+          }),
+        ),
     );
 
-    // CSAT not tied to a ticket — post-delivery survey (Onboarding stage).
+    // CSAT not tied to a ticket — post-delivery survey (Onboarding stage). Carries the
+    // comment/channel that the Surveys service tags into VoC themes and shows in the
+    // "Recent survey responses" list.
     const onboardingCsat = [5, 4, 5, 5, 4, 5, 3, 5, 4, 5];
     await Promise.all(
       newContacts
         .slice(0, onboardingCsat.length)
-        .map((c, i) => tx.survey.create({ data: { tenantId: tenant.id, contactId: c.id, type: 'csat', score: onboardingCsat[i] } })),
+        .map((c, i) =>
+          tx.survey.create({
+            data: {
+              tenantId: tenant.id,
+              contactId: c.id,
+              type: 'csat',
+              score: onboardingCsat[i],
+              comment: CSAT_COMMENTS[i],
+              channel: CHANNELS[i % CHANNELS.length],
+              createdAt: weekDate(i % 8),
+            },
+          }),
+        ),
     );
 
     // NPS — 14 promoters, 4 passives, 2 detractors → NPS ≈ +60.
@@ -217,12 +371,159 @@ async function main() {
         .map((c, i) => tx.survey.create({ data: { tenantId: tenant.id, contactId: c.id, type: 'nps', score: npsScores[i] } })),
     );
 
+    // CES — Customer Effort Score, 1–7 scale ("how easy was it to get help").
+    const cesScores = [6, 7, 6, 5, 6, 7, 5, 6, 7, 6, 5, 6, 7, 6, 5];
+    await Promise.all(
+      newContacts
+        .slice(0, cesScores.length)
+        .map((c, i) =>
+          tx.survey.create({
+            data: {
+              tenantId: tenant.id,
+              contactId: c.id,
+              type: 'ces',
+              score: cesScores[i],
+              channel: CHANNELS[i % CHANNELS.length],
+              createdAt: weekDate(i % 8),
+            },
+          }),
+        ),
+    );
+
+    // Agents behind Auto QA's leaderboard and the AI-vs-human split below. The lead
+    // (index 0) is excluded from the assignment rotation.
+    const agentUsers = await Promise.all(
+      AGENT_USERS.map((u) => tx.user.create({ data: { tenantId: tenant.id, ...u } })),
+    );
+    const rotationAgents = agentUsers.slice(1);
+
+    // Conversations + messages + QA audits behind Auto QA and Analytics — 14 days of
+    // volume shaped so AI resolves a growing share (Analytics line chart), and every
+    // resolved conversation gets audited (QA's "100% auto-audited" KPI).
+    const conversations: any[] = [];
+    const messages: any[] = [];
+    const qaAudits: any[] = [];
+    let convIndex = 0;
+    for (let day = 0; day < DAILY_TOTAL.length; day++) {
+      const daysAgo = DAILY_TOTAL.length - 1 - day;
+      const total = DAILY_TOTAL[day];
+      const aiCount = DAILY_AI[day];
+      const isLastDay = day === DAILY_TOTAL.length - 1;
+      for (let j = 0; j < total; j++) {
+        const isAi = j < aiCount;
+        const contact = allContacts[convIndex % allContacts.length];
+        const assignedUserId = isAi ? null : rotationAgents[convIndex % rotationAgents.length].id;
+        const hour = CONV_HOURS[convIndex % CONV_HOURS.length];
+        const createdAt = new Date();
+        createdAt.setDate(createdAt.getDate() - daysAgo);
+        createdAt.setHours(hour, randInt(0, 59), 0, 0);
+        const isOpen = isLastDay && j >= total - 2; // today's last couple are still in-flight
+        const handleTimeMins = isAi ? randInt(2, 8) : randInt(6, 22);
+        const updatedAt = isOpen ? createdAt : new Date(createdAt.getTime() + handleTimeMins * 60_000);
+        const id = randomUUID();
+        const intent = CONV_INTENTS[convIndex % CONV_INTENTS.length];
+        const channel = CONV_CHANNELS[convIndex % CONV_CHANNELS.length];
+
+        conversations.push({
+          id,
+          tenantId: tenant.id,
+          contactId: contact?.id,
+          channel,
+          status: isOpen ? 'open' : 'resolved',
+          sentiment: CONV_SENTIMENTS[convIndex % CONV_SENTIMENTS.length],
+          intent,
+          language: CONV_LANGUAGES[convIndex % CONV_LANGUAGES.length],
+          assignedUserId,
+          createdAt,
+          updatedAt,
+        });
+
+        const responseSecs = isAi ? randInt(5, 40) : randInt(45, 420);
+        messages.push(
+          { tenantId: tenant.id, conversationId: id, senderType: 'customer', body: 'Customer message', createdAt },
+          {
+            tenantId: tenant.id,
+            conversationId: id,
+            senderType: isAi ? 'bot' : 'agent',
+            senderId: assignedUserId,
+            body: isAi ? 'Astra AI response' : 'Agent response',
+            createdAt: new Date(createdAt.getTime() + responseSecs * 1000),
+          },
+        );
+
+        if (!isOpen) {
+          const score = isAi ? randInt(88, 97) : randInt(65, 95);
+          const flagged = score < 75;
+          const empathy = score >= 90 ? 'High' : score >= 80 ? 'Good' : 'Needs work';
+          const resolution = isAi ? 'Auto' : flagged ? 'Escalated' : 'Resolved';
+          qaAudits.push({
+            tenantId: tenant.id,
+            conversationId: id,
+            agentUserId: assignedUserId,
+            contactId: contact?.id,
+            score,
+            breakdown: { category: INTENT_LABELS[intent], empathy, resolution, channel },
+            flagged,
+            createdAt: updatedAt,
+          });
+        }
+        convIndex++;
+      }
+    }
+    await tx.conversation.createMany({ data: conversations });
+    await tx.message.createMany({ data: messages });
+    await tx.qaAudit.createMany({ data: qaAudits });
+
+    // SLA resolution events for resolved tickets — ~92% met, a few breached (Analytics'
+    // "SLA met" KPI).
+    await tx.slaEvent.createMany({
+      data: resolvedTickets.map((t, i) => {
+        const targetMins = 240;
+        const breached = i % 12 === 0;
+        const actualMins = breached ? targetMins + randInt(30, 180) : randInt(20, targetMins - 10);
+        const targetAt = new Date(t.createdAt.getTime() + targetMins * 60_000);
+        return {
+          tenantId: tenant.id,
+          ticketId: t.id,
+          kind: 'resolution',
+          targetAt,
+          metAt: breached ? null : new Date(t.createdAt.getTime() + actualMins * 60_000),
+          breached,
+        };
+      }),
+    });
+
     // Proactive nudges — automation rules behind the Journey "nudges firing" panel.
     await tx.rule.createMany({
       data: NUDGE_RULES.map((r) => ({ tenantId: tenant.id, ...r })),
     });
 
-    console.log(`Seeded ${newContacts.length} contacts, ${created} tickets, surveys and ${NUDGE_RULES.length} rules.`);
+    // Past broadcasts behind the Campaigns view's "Recent campaigns" panel.
+    await Promise.all(
+      PAST_CAMPAIGNS.map(({ daysAgo, ...c }) => {
+        const createdAt = new Date();
+        createdAt.setDate(createdAt.getDate() - daysAgo);
+        return tx.campaign.create({
+          data: { tenantId: tenant.id, channel: 'whatsapp', status: 'sent', createdAt, ...c },
+        });
+      }),
+    );
+
+    // KB articles behind the Self-Service Portal's category tiles.
+    await tx.kbArticle.createMany({
+      data: PORTAL_KB_ARTICLES.map((a) => ({
+        tenantId: tenant.id,
+        category: a.category,
+        title: a.title,
+        body: `Placeholder content for "${a.title}".`,
+        status: 'published',
+      })),
+    });
+
+    console.log(
+      `Seeded ${newContacts.length} contacts, ${created} tickets, ${KB_ARTICLES.length + PORTAL_KB_ARTICLES.length} KB articles, ` +
+        `${agentUsers.length} agents, ${conversations.length} conversations, ${qaAudits.length} QA audits, surveys and ${NUDGE_RULES.length} rules.`,
+    );
   });
 }
 

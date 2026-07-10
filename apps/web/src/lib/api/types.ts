@@ -90,6 +90,159 @@ export interface JourneyPayload {
   nudges: ProactiveNudge[];
 }
 
+// GET /api/v1/qa/summary
+export interface QaKpis {
+  autoAuditedPct: number;
+  avgScore: number;
+  csatDeltaPct: number;
+  flaggedCount: number;
+}
+export interface QaAuditRow {
+  agentLabel: string;
+  customerName: string;
+  score: number;
+  scoreClass: 'qa-hi' | 'qa-mid' | 'qa-lo';
+  category: string;
+  empathy: string;
+  resolution: string;
+}
+export interface LeaderboardEntry {
+  rank: number;
+  name: string;
+  initials: string;
+  avatarColor: string;
+  title: string;
+  resolvedCount: number;
+  avgScore: number;
+}
+export interface IntentBar {
+  label: string;
+  pct: number;
+  color: string;
+}
+export interface QaPayload {
+  kpis: QaKpis;
+  recentAudits: QaAuditRow[];
+  leaderboard: LeaderboardEntry[];
+  intents: IntentBar[];
+}
+
+// GET /api/v1/analytics/detail
+export interface AnalyticsKpis {
+  conversations30d: number;
+  costSavedLabel: string;
+  avgHandleTimeLabel: string;
+  slaMetPct: number;
+}
+export interface TrendPoint {
+  label: string;
+  total: number;
+  aiResolved: number;
+}
+export interface ChannelCsat {
+  label: string;
+  avg: number;
+  color: string;
+}
+export interface HourBar {
+  label: string;
+  pct: number;
+}
+export interface LanguageSplit {
+  label: string;
+  pct: number;
+  color: string;
+}
+export interface AnalyticsPayload {
+  kpis: AnalyticsKpis;
+  trend: TrendPoint[];
+  csatByChannel: ChannelCsat[];
+  hourBars: HourBar[];
+  languages: LanguageSplit[];
+  heat: number[];
+}
+
+// GET /api/v1/portal/summary
+export interface PortalCategory {
+  icon: string;
+  label: string;
+  articleCount: number;
+}
+export interface LatestOrderStatus {
+  extRef: string;
+  status: string;
+}
+export interface PortalPayload {
+  categories: PortalCategory[];
+  latestOrder: LatestOrderStatus | null;
+}
+
+// GET /api/v1/campaigns/summary, POST /api/v1/campaigns
+export type AudienceId = 'gold' | 'abandoned_cart' | 'festive';
+export interface CampaignAudience {
+  id: AudienceId;
+  icon: string;
+  iconClass: string;
+  label: string;
+  description: string;
+  count: number;
+  sampleName: string;
+  defaultMessage: string;
+}
+export interface RecentCampaign {
+  id: string;
+  name: string;
+  metricLabel: string;
+}
+export interface CampaignsPayload {
+  audiences: CampaignAudience[];
+  recent: RecentCampaign[];
+}
+export interface SendCampaignDto {
+  audienceId: AudienceId;
+  message: string;
+}
+
+// GET /api/v1/surveys/summary
+export interface CsatSummary {
+  avg: number;
+  deltaVsPrevMonth: number;
+  responseCount: number;
+}
+export interface NpsSummary {
+  score: number;
+  promoterPct: number;
+  passivePct: number;
+  detractorPct: number;
+}
+export interface CesSummary {
+  avg: number;
+  deltaVsPrevMonth: number;
+}
+export interface CsatTrendPoint {
+  label: string;
+  avg: number;
+}
+export interface VocTheme {
+  label: string;
+  pct: number;
+  color: string;
+}
+export interface RecentSurveyResponse {
+  contactName: string;
+  score: number;
+  channel: string | null;
+  comment: string | null;
+}
+export interface SurveysPayload {
+  csat: CsatSummary;
+  nps: NpsSummary;
+  ces: CesSummary;
+  trend: CsatTrendPoint[];
+  themes: VocTheme[];
+  recent: RecentSurveyResponse[];
+}
+
 // GET /api/v1/activity/feed
 export interface FeedItem {
   icon: string;
