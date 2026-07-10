@@ -8,6 +8,11 @@ import { AddCustomer } from './modules/customer/AddCustomer';
 import { CustomerProfile } from './modules/customer/CustomerProfile';
 import { CustomerJourney } from './modules/journey/CustomerJourney';
 import { AiChatbot } from './modules/chatbot/AiChatbot';
+import { SurveysVoc } from './modules/surveys/SurveysVoc';
+import { Campaigns } from './modules/campaigns/Campaigns';
+import { SelfServicePortal } from './modules/portal/SelfServicePortal';
+import { AutoQA } from './modules/qa/AutoQA';
+import { Analytics } from './modules/analytics/Analytics';
 import { StubPage } from './components/StubPage';
 
 /** Views with a finished port register here; everything else renders its stub. */
@@ -16,6 +21,11 @@ const PORTED: Record<string, () => JSX.Element | null> = {
   customer: CustomerProfile,
   journey: CustomerJourney,
   chatbot: AiChatbot,
+  surveys: SurveysVoc,
+  campaigns: Campaigns,
+  portal: SelfServicePortal,
+  qa: AutoQA,
+  analytics: Analytics,
 };
 
 export function App() {
