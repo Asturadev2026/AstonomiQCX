@@ -2,6 +2,8 @@ import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import type {
   AskAstraPayload,
   AstraAnswer,
+  AnalyticsPayload,
+  CampaignsPayload,
   ContactDto,
   ContactOrder,
   ContactProfile,
@@ -11,8 +13,13 @@ import type {
   JourneyPayload,
   NavCounts,
   OverviewPayload,
+  PortalPayload,
+  QaPayload,
+  RecentCampaign,
+  SendCampaignDto,
   SentimentMonth,
   SessionUser,
+  SurveysPayload,
 } from './types';
 
 /**
@@ -70,6 +77,51 @@ export function useJourney() {
   return useQuery<JourneyPayload>({
     queryKey: ['journey'],
     queryFn: () => api('/journey/summary'),
+  });
+}
+
+export function useSurveys() {
+  return useQuery<SurveysPayload>({
+    queryKey: ['surveys'],
+    queryFn: () => api('/surveys/summary'),
+  });
+}
+
+export function useCampaigns() {
+  return useQuery<CampaignsPayload>({
+    queryKey: ['campaigns'],
+    queryFn: () => api('/campaigns/summary'),
+  });
+}
+
+export function useSendCampaign() {
+  const queryClient = useQueryClient();
+  return useMutation<RecentCampaign, Error, SendCampaignDto>({
+    mutationFn: (payload) => post('/campaigns', payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['campaigns'] });
+    },
+  });
+}
+
+export function usePortal() {
+  return useQuery<PortalPayload>({
+    queryKey: ['portal'],
+    queryFn: () => api('/portal/summary'),
+  });
+}
+
+export function useQa() {
+  return useQuery<QaPayload>({
+    queryKey: ['qa'],
+    queryFn: () => api('/qa/summary'),
+  });
+}
+
+export function useAnalytics() {
+  return useQuery<AnalyticsPayload>({
+    queryKey: ['analytics', 'detail'],
+    queryFn: () => api('/analytics/detail'),
   });
 }
 
