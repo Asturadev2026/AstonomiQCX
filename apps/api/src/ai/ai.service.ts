@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { AstraAnswerDto } from '@aq/shared';
+import { AgentFlowService } from '../agent-builder/agent-flow.service';
+import { FlowExecutionService } from '../agent-builder/flow-execution.service';
 import { KbService } from '../kb/kb.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { isConfigured, llmComplete, LlmAuthError } from './llm';
@@ -10,6 +12,11 @@ import { isConfigured, llmComplete, LlmAuthError } from './llm';
  * cover it. KB search is keyword-based for now (see KbService.searchByKeyword
  * for why) — swap for pgvector cosine search once an embeddings key exists;
  * everything downstream of "here are the matching articles" stays the same.
+ *
+ * If the tenant has published an Agent Builder flow (Guide §1.3/§12), that
+ * flow's real node-by-node execution (intent detection, order lookup,
+ * clarifying questions, escalation) takes over instead of this plain path —
+ * every channel (Chatbot/WhatsApp/Voice) gets that behavior automatically.
  */
 @Injectable()
 export class AiService {
@@ -18,11 +25,23 @@ export class AiService {
   constructor(
     private kb: KbService,
     private tickets: TicketsService,
+    private flows: AgentFlowService,
+    private flowExecution: FlowExecutionService,
   ) {}
 
-  async ask(tenantId: string, question: string, language = 'en'): Promise<AstraAnswerDto> {
+  async ask(
+    tenantId: string,
+    question: string,
+    options: { language?: string; contactId?: string; conversationId?: string } = {},
+  ): Promise<AstraAnswerDto> {
+    const language = options.language ?? 'en';
     if (!isConfigured()) {
       return { answer: null, escalate: false, configured: false, sources: [], ticketRef: null };
+    }
+
+    const publishedFlow = await this.flows.findPublishedChatFlow(tenantId);
+    if (publishedFlow) {
+      return this.flowExecution.run(tenantId, question, options);
     }
 
     const articles = await this.kb.searchByKeyword(tenantId, question);
@@ -39,16 +58,16 @@ export class AiService {
       const escalate = reply.trim().toUpperCase() === 'ESCALATE';
 
       // Guide §10.4: "If it says escalate, we do not guess — we mark the
-      // conversation for a human and ... raise a ticket." No real
-      // conversation/channel exists yet for this demo chatbot, so there's no
-      // human to hand off to directly — raising the ticket is the concrete
-      // part of that behavior we can do today.
+      // conversation for a human and ... raise a ticket." Links to the real
+      // contact/conversation when the caller has one (e.g. WhatsApp).
       let ticketRef: string | null = null;
       if (escalate) {
         const ticket = await this.tickets.create(tenantId, null, {
           subject: question.slice(0, 60),
           description: question,
           category: 'chatbot_escalation',
+          contactId: options.contactId,
+          conversationId: options.conversationId,
         });
         ticketRef = ticket.extRef;
       }

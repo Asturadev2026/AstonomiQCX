@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Req } from '@nestjs/common';
 import type { TenantScopedRequest } from '../tenancy/tenant.middleware';
 import { KbService } from './kb.service';
 import { CreateKbArticleDto } from './create-kb-article.dto';
@@ -20,5 +20,10 @@ export class KbController {
   @Post()
   create(@Req() req: TenantScopedRequest, @Body() dto: CreateKbArticleDto) {
     return this.svc.create(req.tenantId, dto);
+  }
+
+  @Patch(':id/view')
+  incrementView(@Req() req: TenantScopedRequest, @Param('id') id: string) {
+    return this.svc.incrementView(req.tenantId, id);
   }
 }

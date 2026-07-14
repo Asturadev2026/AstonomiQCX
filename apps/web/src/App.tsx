@@ -8,6 +8,12 @@ import { AddCustomer } from './modules/customer/AddCustomer';
 import { CustomerProfile } from './modules/customer/CustomerProfile';
 import { CustomerJourney } from './modules/journey/CustomerJourney';
 import { AiChatbot } from './modules/chatbot/AiChatbot';
+import { WhatsappBot } from './modules/whatsapp/WhatsappBot';
+import { VoiceAi } from './modules/voice/VoiceAi';
+import { AgentBuilder } from './modules/builder/AgentBuilder';
+import { Automations } from './modules/automations/Automations';
+import { KnowledgeBase } from './modules/kb/KnowledgeBase';
+import { Macros } from './modules/macros/Macros';
 import { SurveysVoc } from './modules/surveys/SurveysVoc';
 import { Campaigns } from './modules/campaigns/Campaigns';
 import { SelfServicePortal } from './modules/portal/SelfServicePortal';
@@ -21,6 +27,12 @@ const PORTED: Record<string, () => JSX.Element | null> = {
   customer: CustomerProfile,
   journey: CustomerJourney,
   chatbot: AiChatbot,
+  whatsapp: WhatsappBot,
+  voice: VoiceAi,
+  builder: AgentBuilder,
+  automations: Automations,
+  kb: KnowledgeBase,
+  macros: Macros,
   surveys: SurveysVoc,
   campaigns: Campaigns,
   portal: SelfServicePortal,
