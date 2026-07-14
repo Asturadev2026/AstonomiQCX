@@ -4,6 +4,7 @@ import { REF_PREFIXES, type CreateTicketDto, type MoveTicketDto } from '@aq/shar
 import { AuditService } from '../audit/audit.service';
 import { SlaService } from '../sla/sla.service';
 import { RtGateway } from '../realtime/rt.gateway';
+import { RuleEngineService } from '../automations/rule-engine.service';
 import type { AuthenticatedUser } from '../auth/jwt.guard';
 import { priorityFromMatrix } from './priority';
 
@@ -16,6 +17,7 @@ export class TicketsService {
     private audit: AuditService,
     private sla: SlaService,
     private rt: RtGateway,
+    private rules: RuleEngineService,
   ) {}
 
   // userId is nullable for system-raised tickets (e.g. Astra escalating a chat — Guide §10.4).
@@ -24,24 +26,44 @@ export class TicketsService {
       const extRef = await nextRef(tx, tenantId, REF_PREFIXES.ticket);
 
       let segment: string | null = null;
+      let conversation: { channel: string; sentiment: string | null; language: string | null } | null = null;
       if (dto.contactId) {
         segment = (await tx.contact.findUnique({ where: { id: dto.contactId }, select: { segment: true } }))
           ?.segment ?? null;
       }
+      if (dto.conversationId) {
+        conversation = await tx.conversation.findUnique({
+          where: { id: dto.conversationId },
+          select: { channel: true, sentiment: true, language: true },
+        });
+      }
       const priority = dto.priority ?? priorityFromMatrix({ text: dto.subject, segment });
 
-      const ticket = await tx.ticket.create({
+      let ticket = await tx.ticket.create({
         data: {
           tenantId,
           extRef,
           subject: dto.subject,
           description: dto.description,
           contactId: dto.contactId,
+          conversationId: dto.conversationId,
           priority,
           category: dto.category,
           departmentId: dto.departmentId,
           status: 'new',
         },
+      });
+
+      // Guide §12.3: rules run right on this real event, in the same transaction.
+      ticket = await this.rules.runForTicketCreated(tx, tenantId, ticket, {
+        text: `${dto.subject} ${dto.description ?? ''}`,
+        category: ticket.category,
+        priority: ticket.priority,
+        status: ticket.status,
+        segment,
+        channel: conversation?.channel ?? null,
+        sentiment: conversation?.sentiment ?? null,
+        language: conversation?.language ?? null,
       });
 
       await this.sla.startTimers(tx, tenantId, ticket);

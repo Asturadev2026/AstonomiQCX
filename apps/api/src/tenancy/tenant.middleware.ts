@@ -16,6 +16,16 @@ export interface TenantScopedRequest extends Request {
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
   async use(req: Request, _res: Response, next: NextFunction) {
+    // Channel webhooks (Guide §13) come from Meta, not a browser — there's no
+    // subdomain/x-tenant to resolve from. Those routes resolve their own
+    // tenant from the channel's identity (e.g. WhatsApp's phone_number_id).
+    // req.path is relative to Nest's internal router mount (always "/" here,
+    // regardless of the real endpoint) — req.originalUrl preserves the full
+    // requested path, which is what we actually need to match on.
+    if (req.originalUrl.includes('/webhooks/')) {
+      return next();
+    }
+
     const subdomain =
       (req.headers['x-tenant'] as string) ||
       ((req.headers['x-forwarded-host'] as string) || req.hostname).split('.')[0];

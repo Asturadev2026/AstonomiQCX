@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import type {
+  AgentFlowDto,
   AskAstraPayload,
   AstraAnswer,
   AnalyticsPayload,
@@ -9,13 +10,19 @@ import type {
   ContactProfile,
   ContactTicket,
   CreateContactDto,
+  CreateKbArticleDto,
+  CreateMacroDto,
   FeedItem,
+  FlowNodeConfig,
   JourneyPayload,
+  KbArticle,
+  MacroDto,
   NavCounts,
   OverviewPayload,
   PortalPayload,
   QaPayload,
   RecentCampaign,
+  RuleDto,
   SendCampaignDto,
   SentimentMonth,
   SessionUser,
@@ -53,6 +60,15 @@ async function post<TBody, TResult>(path: string, payload: TBody): Promise<TResu
   });
   if (!res.ok) {
     throw new Error(`POST /api/v1${path} failed: ${res.status}`);
+  }
+  const body = (await res.json()) as { data: TResult };
+  return body.data
+}
+
+async function patch<TResult>(path: string): Promise<TResult> {
+  const res = await fetch(`/api/v1${path}`, { method: 'PATCH', headers: DEV_TENANT_HEADER });
+  if (!res.ok) {
+    throw new Error(`PATCH /api/v1${path} failed: ${res.status}`);
   }
   const body = (await res.json()) as { data: TResult };
   return body.data;
@@ -185,5 +201,109 @@ export function useCreateContact() {
 export function useAskAstra() {
   return useMutation<AstraAnswer, Error, AskAstraPayload>({
     mutationFn: (payload) => post('/ai/ask', payload),
+  });
+}
+
+export function useAgentFlow() {
+  return useQuery<AgentFlowDto>({
+    queryKey: ['agent-flows', 'active'],
+    queryFn: () => api('/agent-flows/active'),
+  });
+}
+
+export function useUpdateFlowNode() {
+  const queryClient = useQueryClient();
+  return useMutation<AgentFlowDto, Error, { flowId: string; nodeId: string; config: FlowNodeConfig }>({
+    mutationFn: ({ flowId, nodeId, config }) => post(`/agent-flows/${flowId}/nodes/${nodeId}`, { config }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['agent-flows', 'active'], data);
+    },
+  });
+}
+
+export function usePublishFlow() {
+  const queryClient = useQueryClient();
+  return useMutation<AgentFlowDto, Error, { flowId: string }>({
+    mutationFn: ({ flowId }) => post(`/agent-flows/${flowId}/publish`, {}),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['agent-flows', 'active'], data);
+    },
+  });
+}
+
+export function useRules() {
+  return useQuery<RuleDto[]>({
+    queryKey: ['rules'],
+    queryFn: () => api('/rules'),
+  });
+}
+
+export function useToggleRule() {
+  const queryClient = useQueryClient();
+  return useMutation<RuleDto, Error, { id: string }>({
+    mutationFn: ({ id }) => patch(`/rules/${id}/toggle`),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<RuleDto[]>(['rules'], (rules) =>
+        rules?.map((r) => (r.id === updated.id ? updated : r)),
+      );
+    },
+  });
+}
+
+export function useKbArticles() {
+  return useQuery<KbArticle[]>({
+    queryKey: ['kb'],
+    queryFn: () => api('/kb'),
+  });
+}
+
+export function useCreateKbArticle() {
+  const queryClient = useQueryClient();
+  return useMutation<KbArticle, Error, CreateKbArticleDto>({
+    mutationFn: (payload) => post('/kb', payload),
+    onSuccess: (created) => {
+      queryClient.setQueryData<KbArticle[]>(['kb'], (articles) => [created, ...(articles ?? [])]);
+    },
+  });
+}
+
+export function useIncrementKbView() {
+  const queryClient = useQueryClient();
+  return useMutation<KbArticle, Error, { id: string }>({
+    mutationFn: ({ id }) => patch(`/kb/${id}/view`),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<KbArticle[]>(['kb'], (articles) =>
+        articles?.map((a) => (a.id === updated.id ? updated : a)),
+      );
+    },
+  });
+}
+
+export function useMacros() {
+  return useQuery<MacroDto[]>({
+    queryKey: ['macros'],
+    queryFn: () => api('/macros'),
+  });
+}
+
+export function useCreateMacro() {
+  const queryClient = useQueryClient();
+  return useMutation<MacroDto, Error, CreateMacroDto>({
+    mutationFn: (payload) => post('/macros', payload),
+    onSuccess: (created) => {
+      queryClient.setQueryData<MacroDto[]>(['macros'], (macros) => [created, ...(macros ?? [])]);
+    },
+  });
+}
+
+export function useUseMacro() {
+  const queryClient = useQueryClient();
+  return useMutation<MacroDto, Error, { id: string }>({
+    mutationFn: ({ id }) => patch(`/macros/${id}/use`),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<MacroDto[]>(['macros'], (macros) =>
+        macros?.map((m) => (m.id === updated.id ? updated : m)),
+      );
+    },
   });
 }

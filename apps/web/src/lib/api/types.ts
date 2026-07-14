@@ -301,3 +301,26 @@ export interface SentimentMonth {
   neg: number;
   dominant: 'pos' | 'neu' | 'neg' | null;
 }
+
+// GET /api/v1/agent-flows/active, POST /api/v1/agent-flows/:id/nodes/:nodeId, POST /api/v1/agent-flows/:id/publish
+export type { AgentFlowDto, FlowNode, FlowNodeConfig, FlowNodeType, UpdateFlowNodeDto } from '@aq/shared';
+
+// GET /api/v1/rules, PATCH /api/v1/rules/:id/toggle
+export type { RuleAction, RuleCondition, RuleConditions, RuleDto } from '@aq/shared';
+
+// GET /api/v1/kb, POST /api/v1/kb, PATCH /api/v1/kb/:id/view
+export type { CreateKbArticleDto } from '@aq/shared';
+export interface KbArticle {
+  id: string;
+  title: string;
+  body: string;
+  category: string | null;
+  language: string;
+  status: string;
+  views: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// GET /api/v1/macros, POST /api/v1/macros, PATCH /api/v1/macros/:id/use
+export type { CreateMacroDto, MacroDto } from '@aq/shared';
