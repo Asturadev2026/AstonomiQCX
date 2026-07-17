@@ -7,19 +7,25 @@ import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { AutomationsModule } from './automations/automations.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
+import { ContactCentreModule } from './contact-centre/contact-centre.module';
 import { ContactsModule } from './contacts/contacts.module';
+import { DepartmentsModule } from './departments/departments.module';
+import { FieldServiceModule } from './field-service/field-service.module';
 import { JourneyModule } from './journey/journey.module';
 import { KbModule } from './kb/kb.module';
 import { MacrosModule } from './macros/macros.module';
 import { PortalModule } from './portal/portal.module';
+import { PriorityMatrixModule } from './priority-matrix/priority-matrix.module';
 import { QaModule } from './qa/qa.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { SlaModule } from './sla/sla.module';
 import { SurveysModule } from './surveys/surveys.module';
+import { TelephonyModule } from './telephony/telephony.module';
 import { TenantMiddleware } from './tenancy/tenant.middleware';
 import { TicketsModule } from './tickets/tickets.module';
 import { VoiceModule } from './voice/voice.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
+import { WorkforceModule } from './workforce/workforce.module';
 
 @Module({
   imports: [
@@ -28,7 +34,10 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     SlaModule,
     AuthModule,
     AutomationsModule,
+    ContactCentreModule,
     ContactsModule,
+    DepartmentsModule,
+    FieldServiceModule,
     JourneyModule,
     TicketsModule,
     KbModule,
@@ -42,6 +51,9 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     WhatsappModule,
     VoiceModule,
     AgentBuilderModule,
+    WorkforceModule,
+    TelephonyModule,
+    PriorityMatrixModule,
   ],
   controllers: [AppController],
 })

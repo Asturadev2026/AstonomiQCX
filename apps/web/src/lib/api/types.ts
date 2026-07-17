@@ -16,6 +16,7 @@ export interface NavCounts {
 export interface AskAstraPayload {
   question: string;
   language?: string;
+  channel?: 'chat' | 'whatsapp' | 'voice';
 }
 
 export interface AstraAnswer {
@@ -24,6 +25,7 @@ export interface AstraAnswer {
   configured: boolean;
   sources: string[];
   ticketRef: string | null;
+  clarifying?: boolean;
 }
 
 // GET /api/v1/me
@@ -324,3 +326,33 @@ export interface KbArticle {
 
 // GET /api/v1/macros, POST /api/v1/macros, PATCH /api/v1/macros/:id/use
 export type { CreateMacroDto, MacroDto } from '@aq/shared';
+
+// GET /api/v1/sla/policies, /sla/kpis, /sla/scorecard, /sla/breaches, /sla/escalation-matrix
+export type { EscalationLevelDto, SlaBreachRow, SlaKpis, SlaPolicyDto, SlaScorecardRow } from '@aq/shared';
+
+// GET /api/v1/departments
+export type { AgentStatus, DepartmentCardDto, DepartmentExecDto } from '@aq/shared';
+
+// GET /api/v1/workforce/board, /workforce/roster
+export type { RosterRowDto, WorkforceBoardDto, WorkforcePersonDto, WorkforceRosterDto, WorkforceStatusCounts } from '@aq/shared';
+
+// GET /api/v1/contact-centre/kpis, /contact-centre/ivr-menu
+export type { ContactCentreKpis, IvrMenuOptionDto } from '@aq/shared';
+
+// GET /api/v1/telephony/*, POST /api/v1/telephony/test-call, /telephony/numbers
+export type {
+  CallWorkflowStepDto,
+  CdrRowDto,
+  CreateNumberDidDto,
+  NumberDidDto,
+  SendTestCallDto,
+  TelephonyIntegrationStatus,
+  TelephonyKpis,
+  TestCallResultDto,
+} from '@aq/shared';
+
+// GET /api/v1/field-service/kpis, /field-service/visits
+export type { FieldServiceKpis, ServiceVisitDto } from '@aq/shared';
+
+// GET /api/v1/priority-matrix
+export type { PriorityLevelInfoDto, PriorityMatrixCellDto, PriorityMatrixDto } from '@aq/shared';

@@ -3,6 +3,8 @@
 export interface AskAstraDto {
   question: string;
   language?: string;
+  /** Lets the reply style adapt — voice replies are short/spoken, no markdown. Defaults to 'chat'. */
+  channel?: 'chat' | 'whatsapp' | 'voice';
 }
 
 export interface AstraAnswerDto {
@@ -14,4 +16,6 @@ export interface AstraAnswerDto {
   sources: string[];
   /** the human-friendly ticket number raised on escalation (Guide §10.4), null otherwise. */
   ticketRef: string | null;
+  /** true when `answer` is Agent Builder's ask_question clarifying prompt, not a completed answer. */
+  clarifying?: boolean;
 }

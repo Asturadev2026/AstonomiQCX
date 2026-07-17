@@ -4,12 +4,14 @@ import type { AgentFlowDefinition, AstraAnswerDto } from '@aq/shared';
 import { KbService } from '../kb/kb.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { isConfigured, llmComplete, LlmAuthError } from '../ai/llm';
+import { stripMarkdownForSpeech, VOICE_STYLE_INSTRUCTION } from '../ai/reply-style';
 import { AgentFlowService } from './agent-flow.service';
 
 interface RunOptions {
   language?: string;
   contactId?: string;
   conversationId?: string;
+  channel?: 'chat' | 'whatsapp' | 'voice';
 }
 
 interface ExecContext {
@@ -80,7 +82,14 @@ export class FlowExecutionService {
             // stop here; the customer's next message re-enters at
             // detect_intent, which should now resolve clearly from their answer.
             if (ctx.intent === 'other' && node.config.question) {
-              return { answer: node.config.question, escalate: false, configured: true, sources: [], ticketRef: null };
+              return {
+                answer: node.config.question,
+                escalate: false,
+                configured: true,
+                sources: [],
+                ticketRef: null,
+                clarifying: true,
+              };
             }
             break;
           }
@@ -92,15 +101,18 @@ export class FlowExecutionService {
               ? `Their most recent order: ${ctx.order.extRef ?? ctx.order.id}, "${ctx.order.description ?? 'item'}", ` +
                 `status: ${ctx.order.status ?? 'unknown'}, amount: ₹${ctx.order.amount ?? '?'}.\n\n`
               : '';
+            const styleInstruction = options.channel === 'voice' ? `${VOICE_STYLE_INSTRUCTION} ` : '';
             const prompt =
-              `You are Astra, the support assistant. The customer's detected intent is "${ctx.intent ?? 'other'}". ` +
-              `${orderLine}Answer the customer ONLY using the knowledge base context below (and the order details ` +
-              `above if relevant). Reply in ${language}. If the answer is not in the context, or the issue needs a ` +
-              `human (like a refund or complaint), reply with exactly the word ESCALATE.\n\n` +
-              `Context:\n${kbContext || '(no matching knowledge base articles)'}\n\nCustomer question: ${question}`;
+              `You are Astra, the support assistant. ${styleInstruction}The customer's detected intent is ` +
+              `"${ctx.intent ?? 'other'}". ${orderLine}Answer the customer ONLY using the knowledge base context ` +
+              `below (and the order details above if relevant). Reply in ${language}. If the answer is not in the ` +
+              `context, or the issue needs a human (like a refund or complaint), reply with exactly the word ` +
+              `ESCALATE.\n\nContext:\n${kbContext || '(no matching knowledge base articles)'}\n\n` +
+              `Customer question: ${question}`;
 
             const reply = await llmComplete(prompt);
             const escalate = reply.trim().toUpperCase() === 'ESCALATE';
+            const answer = options.channel === 'voice' ? stripMarkdownForSpeech(reply) : reply;
 
             let ticketRef: string | null = null;
             if (escalate) {
@@ -115,7 +127,7 @@ export class FlowExecutionService {
             }
 
             return {
-              answer: escalate ? null : reply,
+              answer: escalate ? null : answer,
               escalate,
               configured: true,
               sources: articles.map((a) => a.title),

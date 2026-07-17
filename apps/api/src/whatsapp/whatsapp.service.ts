@@ -49,12 +49,18 @@ export class WhatsappService {
     return expectedBuf.length === providedBuf.length && timingSafeEqual(expectedBuf, providedBuf);
   }
 
-  /** Which tenant owns this WhatsApp number — the channel version of Guide §6.2. */
+  /**
+   * Which tenant owns this WhatsApp number — the channel version of Guide
+   * §6.2. The tenant genuinely isn't known yet at this point (that's the
+   * point of the lookup), so this can't go through withTenant(). Uses a
+   * narrow SECURITY DEFINER SQL function — see the equivalent note on
+   * oidc.ts's tenantForUser() and the repo memory on the RLS bypass finding.
+   */
   private async tenantForPhoneNumberId(phoneNumberId: string): Promise<string | null> {
-    const channel = await this.prisma.channel.findFirst({
-      where: { type: 'whatsapp', config: { path: ['phoneNumberId'], equals: phoneNumberId } },
-    });
-    return channel?.tenantId ?? null;
+    const rows = await this.prisma.$queryRaw<
+      Array<{ tenant_id: string | null }>
+    >`SELECT resolve_tenant_by_whatsapp_phone_number_id(${phoneNumberId}) as tenant_id`;
+    return rows[0]?.tenant_id ?? null;
   }
 
   async handleWebhook(body: {

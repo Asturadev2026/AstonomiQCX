@@ -4,29 +4,50 @@ import type {
   AskAstraPayload,
   AstraAnswer,
   AnalyticsPayload,
+  CallWorkflowStepDto,
   CampaignsPayload,
+  CdrRowDto,
   ContactDto,
   ContactOrder,
   ContactProfile,
   ContactTicket,
   CreateContactDto,
   CreateKbArticleDto,
+  CreateNumberDidDto,
+  ContactCentreKpis,
   CreateMacroDto,
+  DepartmentCardDto,
+  EscalationLevelDto,
   FeedItem,
+  FieldServiceKpis,
   FlowNodeConfig,
+  IvrMenuOptionDto,
   JourneyPayload,
   KbArticle,
   MacroDto,
   NavCounts,
+  NumberDidDto,
   OverviewPayload,
   PortalPayload,
+  PriorityMatrixDto,
   QaPayload,
   RecentCampaign,
   RuleDto,
+  SendTestCallDto,
+  ServiceVisitDto,
+  SlaBreachRow,
+  SlaKpis,
+  SlaPolicyDto,
+  SlaScorecardRow,
   SendCampaignDto,
   SentimentMonth,
   SessionUser,
   SurveysPayload,
+  TelephonyIntegrationStatus,
+  TelephonyKpis,
+  TestCallResultDto,
+  WorkforceBoardDto,
+  WorkforceRosterDto,
 } from './types';
 
 /**
@@ -305,5 +326,154 @@ export function useUseMacro() {
         macros?.map((m) => (m.id === updated.id ? updated : m)),
       );
     },
+  });
+}
+
+export function useSlaPolicies() {
+  return useQuery<SlaPolicyDto[]>({
+    queryKey: ['sla', 'policies'],
+    queryFn: () => api('/sla/policies'),
+  });
+}
+
+export function useSlaKpis() {
+  return useQuery<SlaKpis>({
+    queryKey: ['sla', 'kpis'],
+    queryFn: () => api('/sla/kpis'),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useSlaScorecard(by: 'exec' | 'dept') {
+  return useQuery<SlaScorecardRow[]>({
+    queryKey: ['sla', 'scorecard', by],
+    queryFn: () => api(`/sla/scorecard?by=${by}`),
+  });
+}
+
+export function useSlaBreaches() {
+  return useQuery<SlaBreachRow[]>({
+    queryKey: ['sla', 'breaches'],
+    queryFn: () => api('/sla/breaches'),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useEscalationMatrix() {
+  return useQuery<EscalationLevelDto[]>({
+    queryKey: ['sla', 'escalation-matrix'],
+    queryFn: () => api('/sla/escalation-matrix'),
+  });
+}
+
+export function useDepartments() {
+  return useQuery<DepartmentCardDto[]>({
+    queryKey: ['departments'],
+    queryFn: () => api('/departments'),
+  });
+}
+
+export function useWorkforceBoard() {
+  return useQuery<WorkforceBoardDto>({
+    queryKey: ['workforce', 'board'],
+    queryFn: () => api('/workforce/board'),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useWorkforceRoster() {
+  return useQuery<WorkforceRosterDto>({
+    queryKey: ['workforce', 'roster'],
+    queryFn: () => api('/workforce/roster'),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useContactCentreKpis() {
+  return useQuery<ContactCentreKpis>({
+    queryKey: ['contact-centre', 'kpis'],
+    queryFn: () => api('/contact-centre/kpis'),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useIvrMenu() {
+  return useQuery<IvrMenuOptionDto[]>({
+    queryKey: ['contact-centre', 'ivr-menu'],
+    queryFn: () => api('/contact-centre/ivr-menu'),
+  });
+}
+
+export function useTelephonyKpis() {
+  return useQuery<TelephonyKpis>({
+    queryKey: ['telephony', 'kpis'],
+    queryFn: () => api('/telephony/kpis'),
+  });
+}
+
+export function useCallWorkflowSteps() {
+  return useQuery<CallWorkflowStepDto[]>({
+    queryKey: ['telephony', 'workflow-steps'],
+    queryFn: () => api('/telephony/workflow-steps'),
+  });
+}
+
+export function useTelephonyIntegrationStatus() {
+  return useQuery<TelephonyIntegrationStatus>({
+    queryKey: ['telephony', 'integration-status'],
+    queryFn: () => api('/telephony/integration-status'),
+  });
+}
+
+export function useSendTestCall() {
+  return useMutation<TestCallResultDto, Error, SendTestCallDto>({
+    mutationFn: (payload) => post('/telephony/test-call', payload),
+  });
+}
+
+export function useTelephonyNumbers() {
+  return useQuery<NumberDidDto[]>({
+    queryKey: ['telephony', 'numbers'],
+    queryFn: () => api('/telephony/numbers'),
+  });
+}
+
+export function useCreateTelephonyNumber() {
+  const queryClient = useQueryClient();
+  return useMutation<NumberDidDto, Error, CreateNumberDidDto>({
+    mutationFn: (payload) => post('/telephony/numbers', payload),
+    onSuccess: (created) => {
+      queryClient.setQueryData<NumberDidDto[]>(['telephony', 'numbers'], (rows) =>
+        [...(rows ?? []), created].sort((a, b) => a.number.localeCompare(b.number)),
+      );
+    },
+  });
+}
+
+export function useCdr() {
+  return useQuery<CdrRowDto[]>({
+    queryKey: ['telephony', 'cdr'],
+    queryFn: () => api('/telephony/cdr'),
+  });
+}
+
+export function useFieldServiceKpis() {
+  return useQuery<FieldServiceKpis>({
+    queryKey: ['field-service', 'kpis'],
+    queryFn: () => api('/field-service/kpis'),
+  });
+}
+
+export function useFieldServiceVisits() {
+  return useQuery<ServiceVisitDto[]>({
+    queryKey: ['field-service', 'visits'],
+    queryFn: () => api('/field-service/visits'),
+  });
+}
+
+export function usePriorityMatrix() {
+  return useQuery<PriorityMatrixDto>({
+    queryKey: ['priority-matrix'],
+    queryFn: () => api('/priority-matrix'),
   });
 }
