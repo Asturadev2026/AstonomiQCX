@@ -8,3 +8,4 @@ export * from './dto/voice';
 export * from './dto/agent-flow';
 export * from './dto/rule';
 export * from './dto/macro';
+export * from './dto/conversation';

@@ -1,5 +1,6 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { AgentBuilderModule } from './agent-builder/agent-builder.module';
+import { ActivityModule } from './activity/activity.module';
 import { AiModule } from './ai/ai.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { AppController } from './app.controller';
@@ -8,9 +9,12 @@ import { AuthModule } from './auth/auth.module';
 import { AutomationsModule } from './automations/automations.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
 import { ContactsModule } from './contacts/contacts.module';
+import { ConversationsModule } from './conversations/conversations.module';
 import { JourneyModule } from './journey/journey.module';
 import { KbModule } from './kb/kb.module';
 import { MacrosModule } from './macros/macros.module';
+import { MentionsModule } from './mentions/mentions.module';
+import { NavModule } from './nav/nav.module';
 import { PortalModule } from './portal/portal.module';
 import { QaModule } from './qa/qa.module';
 import { RealtimeModule } from './realtime/realtime.module';
@@ -29,6 +33,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     AuthModule,
     AutomationsModule,
     ContactsModule,
+    ConversationsModule,
     JourneyModule,
     TicketsModule,
     KbModule,
@@ -42,6 +47,9 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     WhatsappModule,
     VoiceModule,
     AgentBuilderModule,
+    ActivityModule,
+    NavModule,
+    MentionsModule,
   ],
   controllers: [AppController],
 })
