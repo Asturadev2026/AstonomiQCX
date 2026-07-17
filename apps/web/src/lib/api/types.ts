@@ -12,6 +12,88 @@ export interface NavCounts {
   unreadNotifications: number;
 }
 
+// GET /api/v1/conversations?channel=
+export interface ConversationSummary {
+  id: string;
+  contactName: string;
+  initials: string;
+  avatarColor: string;
+  channel: string;
+  preview: string;
+  time: string;
+  sentiment: 'pos' | 'neu' | 'neg' | null;
+  status: string;
+}
+
+// GET /api/v1/conversations/:id
+export interface ThreadMessage {
+  role: 'cust' | 'bot' | 'agent';
+  text: string;
+  time: string;
+}
+export interface ConversationThread {
+  id: string;
+  contactName: string;
+  initials: string;
+  avatarColor: string;
+  channel: string;
+  location: string | null;
+  phone: string | null;
+  linkedOrderRef: string | null;
+  status: string;
+  assignedUserId: string | null;
+  messages: ThreadMessage[];
+  copilot: {
+    sentiment: 'pos' | 'neu' | 'neg' | null;
+    suggestions: string[];
+    kbArticles: string[];
+    configured: boolean;
+    nextBestActions: string[];
+  };
+}
+
+// POST /api/v1/conversations/:id/messages
+export type { ReplyMessageDto } from '@aq/shared';
+
+// GET /api/v1/tickets, POST /api/v1/tickets, PATCH /api/v1/tickets/:id/move
+export type { CreateTicketDto, MoveTicketDto } from '@aq/shared';
+export interface TicketRow {
+  id: string;
+  extRef: string | null;
+  subject: string;
+  priority: 'p1' | 'p2' | 'p3' | 'p4';
+  status: 'new' | 'in_progress' | 'waiting' | 'resolved' | 'closed';
+  contact: { name: string | null } | null;
+  assignedUser: { name: string; avatarColor: string | null } | null;
+  createdAt: string;
+}
+
+// GET /api/v1/mentions/summary?group=
+export interface ConvHubKpis {
+  mentionsThisWeek: number;
+  autoRepliedPct: number;
+  escalatedCount: number;
+  ticketsCreatedCount: number;
+}
+export interface MentionCard {
+  id: string;
+  source: string;
+  authorName: string;
+  authorHandle: string | null;
+  sentiment: 'pos' | 'neu' | 'neg' | null;
+  time: string;
+  tough: boolean;
+  body: string;
+  tags: string[];
+  botReply: string | null;
+  stage: 'detected' | 'bot_replied' | 'escalated' | 'ticket';
+  ticketRef: string | null;
+}
+export interface ConvHubPayload {
+  kpis: ConvHubKpis;
+  mentions: MentionCard[];
+}
+
 // POST /api/v1/ai/ask
 export interface AskAstraPayload {
   question: string;
