@@ -1,5 +1,5 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose';
-import { getPrisma } from '@aq/db';
+import { getPrisma, withTenant } from '@aq/db';
 import { env } from '../config/env';
 
 // Keycloak publishes its public keys here — we fetch them once and reuse them.
@@ -20,32 +20,38 @@ export async function verifyOidcToken(token: string) {
 
 /** Loads the user from OUR database using the tenant + the id from the token. */
 export async function loadUser(tenantId: string, oidcSubject: string) {
-  const prisma = getPrisma();
-  const user = await prisma.user.findFirst({
-    where: { tenantId, oidcSubject },
+  return withTenant(getPrisma(), tenantId, async (tx) => {
+    const user = await tx.user.findFirst({ where: { oidcSubject } });
+    if (!user) throw new Error('User not found in this workspace');
+
+    const role = user.roleId ? await tx.role.findUnique({ where: { id: user.roleId } }) : null;
+
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      title: user.title,
+      departmentId: user.departmentId,
+      permissions: (role?.permissions as string[]) || [],
+    };
   });
-  if (!user) throw new Error('User not found in this workspace');
-
-  const role = user.roleId
-    ? await prisma.role.findUnique({ where: { id: user.roleId } })
-    : null;
-
-  return {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    title: user.title,
-    departmentId: user.departmentId,
-    permissions: (role?.permissions as string[]) || [],
-  };
 }
 
-/** Finds which company (tenant) a user belongs to — used by the live-updates connection. */
+/**
+ * Finds which company (tenant) a user belongs to — used by the live-updates
+ * connection, where the tenant genuinely isn't known yet (that's the whole
+ * point of this lookup). Can't go through withTenant() for that reason, and
+ * a bare cross-tenant query would either return nothing or (before the RLS
+ * fix — see repo memory) leak every tenant's users. Uses a narrow
+ * SECURITY DEFINER SQL function instead: it runs with the function owner's
+ * privileges (bypassing RLS) for this one specific, audited lookup, while
+ * the app's own DB role keeps zero broader bypass capability.
+ */
 export async function tenantForUser(oidcSubject: string): Promise<string> {
-  const user = await getPrisma().user.findFirst({
-    where: { oidcSubject },
-    select: { tenantId: true },
-  });
-  if (!user) throw new Error('User has no workspace');
-  return user.tenantId;
+  const rows = await getPrisma().$queryRaw<
+    Array<{ tenant_id: string | null }>
+  >`SELECT resolve_tenant_by_oidc_subject(${oidcSubject}) as tenant_id`;
+  const tenantId = rows[0]?.tenant_id;
+  if (!tenantId) throw new Error('User has no workspace');
+  return tenantId;
 }

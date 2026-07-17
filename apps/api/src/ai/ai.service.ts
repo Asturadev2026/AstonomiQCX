@@ -5,6 +5,7 @@ import { FlowExecutionService } from '../agent-builder/flow-execution.service';
 import { KbService } from '../kb/kb.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { isConfigured, llmComplete, LlmAuthError } from './llm';
+import { stripMarkdownForSpeech, VOICE_STYLE_INSTRUCTION } from './reply-style';
 
 /**
  * Astra, the RAG support chatbot — Guide §10.3. Answers ONLY from the
@@ -32,7 +33,7 @@ export class AiService {
   async ask(
     tenantId: string,
     question: string,
-    options: { language?: string; contactId?: string; conversationId?: string } = {},
+    options: { language?: string; contactId?: string; conversationId?: string; channel?: 'chat' | 'whatsapp' | 'voice' } = {},
   ): Promise<AstraAnswerDto> {
     const language = options.language ?? 'en';
     if (!isConfigured()) {
@@ -47,8 +48,9 @@ export class AiService {
     const articles = await this.kb.searchByKeyword(tenantId, question);
     const context = articles.map((a) => `# ${a.title}\n${a.body}`).join('\n---\n');
 
+    const styleInstruction = options.channel === 'voice' ? `${VOICE_STYLE_INSTRUCTION} ` : '';
     const prompt =
-      `You are Astra, the support assistant. Answer the customer ONLY using the context below. ` +
+      `You are Astra, the support assistant. ${styleInstruction}Answer the customer ONLY using the context below. ` +
       `Reply in ${language}. If the answer is not in the context, or the issue needs a human ` +
       `(like a refund or complaint), reply with exactly the word ESCALATE.\n\n` +
       `Context:\n${context || '(no matching knowledge base articles)'}\n\nCustomer question: ${question}`;
@@ -56,6 +58,7 @@ export class AiService {
     try {
       const reply = await llmComplete(prompt);
       const escalate = reply.trim().toUpperCase() === 'ESCALATE';
+      const answer = options.channel === 'voice' ? stripMarkdownForSpeech(reply) : reply;
 
       // Guide §10.4: "If it says escalate, we do not guess — we mark the
       // conversation for a human and ... raise a ticket." Links to the real
@@ -73,7 +76,7 @@ export class AiService {
       }
 
       return {
-        answer: escalate ? null : reply,
+        answer: escalate ? null : answer,
         escalate,
         configured: true,
         sources: articles.map((a) => a.title),

@@ -14,6 +14,13 @@ import { AgentBuilder } from './modules/builder/AgentBuilder';
 import { Automations } from './modules/automations/Automations';
 import { KnowledgeBase } from './modules/kb/KnowledgeBase';
 import { Macros } from './modules/macros/Macros';
+import { Sla } from './modules/sla/Sla';
+import { Departments } from './modules/departments/Departments';
+import { Workforce } from './modules/workforce/Workforce';
+import { ContactCentre } from './modules/contact-centre/ContactCentre';
+import { CloudTelephony } from './modules/telephony/CloudTelephony';
+import { FieldService } from './modules/field-service/FieldService';
+import { PriorityMatrix } from './modules/priority-matrix/PriorityMatrix';
 import { SurveysVoc } from './modules/surveys/SurveysVoc';
 import { Campaigns } from './modules/campaigns/Campaigns';
 import { SelfServicePortal } from './modules/portal/SelfServicePortal';
@@ -33,6 +40,13 @@ const PORTED: Record<string, () => JSX.Element | null> = {
   automations: Automations,
   kb: KnowledgeBase,
   macros: Macros,
+  sla: Sla,
+  departments: Departments,
+  workforce: Workforce,
+  contactcentre: ContactCentre,
+  telephony: CloudTelephony,
+  fieldservice: FieldService,
+  priomatrix: PriorityMatrix,
   surveys: SurveysVoc,
   campaigns: Campaigns,
   portal: SelfServicePortal,

@@ -6,3 +6,8 @@ export interface TranscribeResponseDto {
   /** false when SARVAM_API_KEY isn't configured. */
   configured: boolean;
 }
+
+export interface VoiceStatusDto {
+  sttConfigured: boolean;
+  ttsConfigured: boolean;
+}

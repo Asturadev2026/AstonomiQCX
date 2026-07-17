@@ -1,7 +1,7 @@
-import { BadRequestException, Body, Controller, Post, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Post, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
-import type { TranscribeResponseDto } from '@aq/shared';
+import type { TranscribeResponseDto, VoiceStatusDto } from '@aq/shared';
 import { VoiceNotConfiguredError, VoiceService } from './voice.service';
 
 /**
@@ -11,6 +11,12 @@ import { VoiceNotConfiguredError, VoiceService } from './voice.service';
 @Controller('voice')
 export class VoiceController {
   constructor(private svc: VoiceService) {}
+
+  /** Lets the frontend pick real Sarvam/ElevenLabs vs. the browser-speech fallback once per call. */
+  @Get('status')
+  status(): VoiceStatusDto {
+    return { sttConfigured: this.svc.isSttConfigured(), ttsConfigured: this.svc.isTtsConfigured() };
+  }
 
   @Post('transcribe')
   @UseInterceptors(FileInterceptor('file'))
