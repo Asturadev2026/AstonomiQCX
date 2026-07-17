@@ -15,3 +15,4 @@ export * from './dto/contact-centre';
 export * from './dto/telephony';
 export * from './dto/field-service';
 export * from './dto/priority-matrix';
+export * from './dto/conversation';

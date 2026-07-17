@@ -77,36 +77,37 @@ const PAST_CAMPAIGNS = [
 ];
 
 // Published KB articles behind the Self-Service Portal's category tiles — counts come
-// straight from a groupBy, so the tile copy below just needs enough titles per category.
-const PORTAL_KB_ARTICLES: { category: string; title: string }[] = [
-  { category: 'Orders & delivery', title: 'How to track your order' },
-  { category: 'Orders & delivery', title: 'What does "out for delivery" mean?' },
-  { category: 'Orders & delivery', title: 'Delivery is late — what now?' },
-  { category: 'Orders & delivery', title: 'Can I change my delivery address?' },
-  { category: 'Orders & delivery', title: 'Same-day delivery eligibility' },
-  { category: 'Orders & delivery', title: 'Tracking shows no updates' },
-  { category: 'Orders & delivery', title: 'Order marked delivered but not received' },
-  { category: 'Orders & delivery', title: 'Scheduling a delivery slot' },
-  { category: 'Returns & refunds', title: 'How to start a return' },
-  { category: 'Returns & refunds', title: 'Refund timelines by payment method' },
-  { category: 'Returns & refunds', title: 'Return pickup not scheduled' },
-  { category: 'Returns & refunds', title: 'Exchanging a product for a different size' },
-  { category: 'Returns & refunds', title: 'Items not eligible for return' },
-  { category: 'Returns & refunds', title: 'Refund stuck — how to check status' },
-  { category: 'Payments & EMI', title: 'Available EMI options' },
-  { category: 'Payments & EMI', title: 'Payment failed but amount deducted' },
-  { category: 'Payments & EMI', title: 'Applying a coupon code at checkout' },
-  { category: 'Payments & EMI', title: 'Adding a new payment method' },
-  { category: 'Payments & EMI', title: 'Understanding your invoice' },
-  { category: 'Account & app', title: 'Resetting your password' },
-  { category: 'Account & app', title: 'OTP not received' },
-  { category: 'Account & app', title: 'Updating your profile details' },
-  { category: 'Account & app', title: 'App keeps crashing on checkout' },
-  { category: 'Account & app', title: 'Deleting your account' },
-  { category: 'Warranty & repair', title: 'Registering your product warranty' },
-  { category: 'Warranty & repair', title: 'Booking a repair visit' },
-  { category: 'Warranty & repair', title: 'Warranty claim rejected — next steps' },
-  { category: 'Warranty & repair', title: 'Extending your warranty (AMC)' },
+// straight from a groupBy. Real body content (not placeholders): Omni Inbox's co-pilot
+// falls back to quoting these when no LLM suggestion is available, so they're user-visible.
+const PORTAL_KB_ARTICLES: { category: string; title: string; body: string }[] = [
+  { category: 'Orders & delivery', title: 'How to track your order', body: 'Every order gets a tracking link by SMS and email once it ships. You can also find it anytime under Order History on the app or website.' },
+  { category: 'Orders & delivery', title: 'What does "out for delivery" mean?', body: 'The courier has picked up your package for final delivery and it should arrive the same day, usually by 6-9 PM depending on your area.' },
+  { category: 'Orders & delivery', title: 'Delivery is late — what now?', body: "If your order is delayed beyond the estimated date, share the order reference and we'll check with the courier and update you within 24 hours." },
+  { category: 'Orders & delivery', title: 'Can I change my delivery address?', body: 'The delivery address can be changed only before the order is shipped. Once it shows "out for delivery" the address is locked for that trip.' },
+  { category: 'Orders & delivery', title: 'Same-day delivery eligibility', body: 'Same-day delivery is available on select pin codes for orders placed before 12 PM — eligibility shows automatically at checkout.' },
+  { category: 'Orders & delivery', title: 'Tracking shows no updates', body: "A tracking page can lag a few hours behind the courier's actual scan events. If it hasn't moved in over 24 hours, contact support with the order reference." },
+  { category: 'Orders & delivery', title: 'Order marked delivered but not received', body: 'Check with neighbours or your building security first — couriers sometimes hand off to them. If it truly is missing, report it within 48 hours for a replacement or refund.' },
+  { category: 'Orders & delivery', title: 'Scheduling a delivery slot', body: 'Some categories let you pick a delivery slot at checkout. For existing orders, contact support to request a preferred time window with the courier.' },
+  { category: 'Returns & refunds', title: 'How to start a return', body: 'Start a return from Order History by selecting "Return item" within 30 days of delivery — pickup is free and no reason code is required.' },
+  { category: 'Returns & refunds', title: 'Refund timelines by payment method', body: 'Refunds to UPI/cards take 3-4 business days after pickup; refunds to store wallet are instant once the return is received.' },
+  { category: 'Returns & refunds', title: 'Return pickup not scheduled', body: "If a pickup hasn't been scheduled within 48 hours of requesting a return, share the order reference so we can raise it with the logistics partner directly." },
+  { category: 'Returns & refunds', title: 'Exchanging a product for a different size', body: 'Size exchanges are free within 30 days — select "Exchange" instead of "Return" and the replacement ships once the original is picked up.' },
+  { category: 'Returns & refunds', title: 'Items not eligible for return', body: 'Innerwear, perishables, and items marked non-returnable at purchase cannot be returned once delivered, per the listing terms.' },
+  { category: 'Returns & refunds', title: 'Refund stuck — how to check status', body: 'Refund status is visible under Order History → Refunds. If it shows "processed" for more than 7 business days, contact support with the order reference.' },
+  { category: 'Payments & EMI', title: 'Available EMI options', body: 'No-Cost EMI is available over 3, 6 or 9 months on major bank credit cards for orders above ₹3,000 — shown automatically at checkout.' },
+  { category: 'Payments & EMI', title: 'Payment failed but amount deducted', body: 'If a payment fails after the amount is deducted, banks auto-reverse it within 5-7 business days. Share the transaction ID if it takes longer.' },
+  { category: 'Payments & EMI', title: 'Applying a coupon code at checkout', body: 'Enter the coupon in the "Apply coupon" field before placing the order — it cannot be applied afterward, and each code works once per account.' },
+  { category: 'Payments & EMI', title: 'Adding a new payment method', body: 'New cards, UPI IDs and wallets can be added from Account → Payment methods, or directly at checkout during any purchase.' },
+  { category: 'Payments & EMI', title: 'Understanding your invoice', body: 'GST invoices are emailed automatically after dispatch and are also downloadable from Order History for every item.' },
+  { category: 'Account & app', title: 'Resetting your password', body: 'Use "Forgot password" on the login screen — a reset link is sent to your registered email and expires after 30 minutes.' },
+  { category: 'Account & app', title: 'OTP not received', body: 'Login OTPs are valid for 5 minutes. If one does not arrive, confirm your number is correct, wait 60 seconds, then use "Resend OTP".' },
+  { category: 'Account & app', title: 'Updating your profile details', body: 'Name, email and address can be updated anytime under Account → Profile. Mobile number changes require OTP verification on the new number.' },
+  { category: 'Account & app', title: 'App keeps crashing on checkout', body: 'Try updating to the latest app version and clearing the app cache first — this resolves most checkout crashes. Persisting issues should be reported with the device model.' },
+  { category: 'Account & app', title: 'Deleting your account', body: 'Account deletion can be requested from Account → Privacy — it is processed within 7 days and cannot be reversed once confirmed.' },
+  { category: 'Warranty & repair', title: 'Registering your product warranty', body: 'Warranty registers automatically against your order — no separate form needed. Coverage starts from the delivery date.' },
+  { category: 'Warranty & repair', title: 'Booking a repair visit', body: 'Repair visits can be booked from Order History → Get help → Book repair. A technician typically visits within 3-5 business days.' },
+  { category: 'Warranty & repair', title: 'Warranty claim rejected — next steps', body: 'If a claim is rejected, request the inspection report — most rejections are due to physical/liquid damage not covered by the standard warranty.' },
+  { category: 'Warranty & repair', title: 'Extending your warranty (AMC)', body: 'Extended warranty (AMC) can be purchased within 30 days of delivery from the product page or Order History for eligible categories.' },
 ];
 
 // Agents behind Auto QA's leaderboard and the AI-vs-human split in conversations/QA audits.
@@ -118,6 +119,81 @@ const AGENT_USERS = [
   { name: 'Meera Joshi', email: 'meera.joshi@shopnova.in', avatarColor: '#E08A00', title: 'Agent · Travel' },
   { name: 'Rahul Verma', email: 'rahul.verma@shopnova.in', avatarColor: '#16A34A', title: 'Agent · Retail' },
 ];
+
+// 25 customer names for the extra-contacts loop below — distinct from AGENT_USERS
+// (Kavya Menon, Aditya Nair, Priya Sharma, Meera Joshi, Rahul Verma) so Omni Inbox
+// doesn't show the same name as both a customer and an agent.
+const CONTACT_NAMES = [
+  'Rohan Mehta', 'Ananya Iyer', 'Sneha Reddy', 'Vikram Singh', 'Arjun Patel',
+  'Kavya Nair', 'Deepak Rao', 'Fatima Khan', 'Karan Malhotra', 'Neha Joshi',
+  'Rahul Gupta', 'Pooja Nair', 'Amit Kumar', 'Divya Menon', 'Sameer Khan',
+  'Kavita Rao', 'Vivek Shah', 'Anjali Desai', 'Manish Tiwari', 'Ritu Bansal',
+  'Suresh Pillai', 'Meera Iyengar', 'Nikhil Chopra', 'Shreya Kapoor', 'Ishaan Bhatt',
+];
+// One city per contact above (same index) — Omni Inbox's co-pilot "Customer snapshot" shows this.
+const CONTACT_CITIES = [
+  'Pune', 'Chennai', 'Hyderabad', 'Jaipur', 'Ahmedabad',
+  'Kochi', 'Mumbai', 'Delhi', 'Bengaluru', 'Kolkata',
+  'Lucknow', 'Kochi', 'Indore', 'Kochi', 'Hyderabad',
+  'Nagpur', 'Ahmedabad', 'Surat', 'Bhopal', 'Chandigarh',
+  'Kochi', 'Bengaluru', 'Pune', 'Jaipur', 'Chennai',
+];
+
+// Realistic customer message / support reply pairs per intent — replaces flat
+// "Customer message"/"Agent response" placeholders so Omni Inbox threads read
+// like the prototype instead of lorem-ipsum stand-ins.
+const INTENT_MESSAGES: Record<string, { customer: string[]; reply: string[] }> = {
+  order_tracking: {
+    customer: [
+      'Hi, where is my order? It was due yesterday 😟',
+      "Can you check my order status? No update in 2 days.",
+    ],
+    reply: [
+      "Let me check that right away — your order is out for delivery and should reach you by 6 PM today. 🛵",
+      "I can see your order is in transit and on schedule. You'll get an SMS the moment it's out for delivery.",
+    ],
+  },
+  refund: {
+    customer: [
+      'I returned my item over a week ago but the refund is still not received.',
+      'When will I get my refund for the returned product?',
+    ],
+    reply: [
+      "I can see your refund was initiated a few days ago — it typically clears in 5-7 working days. I've raised a priority trace.",
+      'Your refund has been processed and should reflect in your account within 3-4 business days. 💰',
+    ],
+  },
+  delivery_delay: {
+    customer: [
+      'This is the third time my delivery has been delayed. Very disappointed.',
+      'My order was supposed to arrive yesterday, still no sign of it.',
+    ],
+    reply: [
+      "I'm really sorry for the delay — I've escalated this for priority dispatch and added a goodwill credit to your account.",
+      'I understand the frustration. Checking with our courier partner now and will update you within the hour.',
+    ],
+  },
+  product_enquiry: {
+    customer: [
+      'Does this come with a warranty? Also, is cash on delivery available?',
+      'Can you tell me more about the return policy for this product?',
+    ],
+    reply: [
+      'Yes, this comes with a 1-year manufacturer warranty and COD is available at checkout.',
+      'You can return this within 30 days of delivery, no questions asked — free pickup included. 👗',
+    ],
+  },
+  emi_payment: {
+    customer: [
+      'Can I pay in EMI for this? What are the options?',
+      'Is No-Cost EMI available on this purchase?',
+    ],
+    reply: [
+      'Yes! This is eligible for No-Cost EMI over 3, 6 or 9 months on major bank cards. 📺',
+      "Absolutely — I've added No-Cost EMI options to your cart. Want me to share the payment link?",
+    ],
+  },
+};
 
 function weighted<T>(pairs: [T, number][]): T[] {
   const out: T[] = [];
@@ -165,6 +241,31 @@ const DAILY_AI = [3, 4, 3, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 8];
 function randInt(min: number, max: number): number {
   return min + Math.floor(Math.random() * (max - min + 1));
 }
+
+// Social listening — Conversation Hub mentions behind the "mentions" nav badge.
+const MENTION_SEED = [
+  { source: 'google', author: 'Deepak Rao', body: 'Ordered a fridge, delivery is 5 days late and no update. Very poor service.', sentiment: 'neg', tough: true },
+  { source: 'instagram', author: 'ananya.styles', body: 'Loving my new ShopNova kurta set 😍 delivery was super fast!', sentiment: 'pos', tough: false },
+  { source: 'facebook', author: 'Vikram Singh', body: 'DM about a damaged product on arrival — need a replacement.', sentiment: 'neg', tough: true },
+  { source: 'x', author: '@arjunp', body: 'ShopNova EMI options are actually pretty good, just set mine up.', sentiment: 'pos', tough: false },
+  { source: 'linkedin', author: 'Fatima Khan', body: 'Great experience returning a product, refund was quick.', sentiment: 'pos', tough: false },
+  { source: 'whatsapp', author: 'Rohan Mehta', body: 'Group broadcast reply — asking about the Diwali sale dates.', sentiment: 'neu', tough: false },
+  { source: 'google', author: 'Sneha Reddy', body: '3-star review — product fine but packaging was damaged.', sentiment: 'neu', tough: false },
+  { source: 'instagram', author: 'karan.malhotra', body: 'Commented asking if cash on delivery is available.', sentiment: 'neu', tough: false },
+];
+const MENTION_STAGE_POOL = weighted<string>([['detected', 3], ['bot_replied', 4], ['escalated', 2], ['ticket', 2]]);
+
+// Agent live status behind the Topbar "agents live" pill and Nav "agentsLive" count.
+const AGENT_STATUS_POOL = weighted<string>([['available', 3], ['on_call', 1], ['on_break', 1], ['offline', 1]]);
+// Resolution-SLA windows (minutes) cycled across fresh tickets — 2 to 6 hours.
+const SLA_RESOLUTION_MINS = [120, 180, 240, 360];
+
+// Topbar bell — notification kinds mirror Escalation/SLA events above.
+const NOTIFICATION_TEMPLATES = [
+  { kind: 'ticket.assigned', body: 'A new ticket was assigned to you' },
+  { kind: 'sla.breach', body: 'A ticket you own is close to breaching its SLA' },
+  { kind: 'mention.tough', body: 'A tough social mention needs a human reply' },
+];
 
 const NUDGE_RULES = [
   { name: 'Cart abandoned → WhatsApp reminder', trigger: 'cart_abandoned', enabled: true },
@@ -258,13 +359,16 @@ async function main() {
     // cross-tier slice (10-19) is tagged as "festive_shopper" for the Festive shoppers audience.
     const newContacts = [];
     for (let i = 0; i < 25; i++) {
+      const name = CONTACT_NAMES[i % CONTACT_NAMES.length]!;
+      const emailSlug = name.toLowerCase().replace(/\s+/g, '.');
       newContacts.push(
         await tx.contact.create({
           data: {
             tenantId: tenant.id,
-            name: `Demo Contact ${i + 1}`,
+            name,
             phone: `9${(700000000 + i).toString()}`,
-            email: `demo.contact${i + 1}@example.com`,
+            email: `${emailSlug}@example.com`,
+            location: CONTACT_CITIES[i % CONTACT_CITIES.length],
             loyaltyTier: i >= 15 ? 'Gold' : i >= 5 ? 'Silver' : null,
             tags: i >= 10 && i < 20 ? ['festive_shopper'] : [],
           },
@@ -295,7 +399,19 @@ async function main() {
 
     const allContacts = await tx.contact.findMany({ select: { id: true } });
 
-    // Tickets across the 5 friction categories, mostly resolved.
+    // Agents behind Auto QA's leaderboard, the AI-vs-human split below, and ticket
+    // assignment — created before tickets so tickets can actually reference them
+    // (moved up from after the ticket loop). The lead (index 0) is excluded from
+    // the assignment rotation.
+    const agentUsers = await Promise.all(
+      AGENT_USERS.map((u) => tx.user.create({ data: { tenantId: tenant.id, ...u } })),
+    );
+    const rotationAgents = agentUsers.slice(1);
+
+    // Tickets across the 5 friction categories, mostly resolved. Non-resolved ones
+    // cycle across new/in_progress/waiting so the Tickets Board's 4 kanban columns
+    // aren't lopsided, and ~60% get a real assignee so the board shows agent avatars.
+    const NON_RESOLVED_STATUSES = ['new', 'in_progress', 'waiting'] as const;
     let created = 0;
     for (const { label, count } of TICKET_CATEGORIES) {
       for (let i = 0; i < count; i++) {
@@ -307,7 +423,8 @@ async function main() {
             contactId: allContacts[created % allContacts.length]?.id,
             subject: label,
             category: label,
-            status: isResolved ? 'resolved' : 'in_progress',
+            status: isResolved ? 'resolved' : NON_RESOLVED_STATUSES[created % NON_RESOLVED_STATUSES.length],
+            assignedUserId: created % 5 < 3 ? rotationAgents[created % rotationAgents.length]!.id : null,
           },
         });
         created++;
@@ -390,13 +507,6 @@ async function main() {
         ),
     );
 
-    // Agents behind Auto QA's leaderboard and the AI-vs-human split below. The lead
-    // (index 0) is excluded from the assignment rotation.
-    const agentUsers = await Promise.all(
-      AGENT_USERS.map((u) => tx.user.create({ data: { tenantId: tenant.id, ...u } })),
-    );
-    const rotationAgents = agentUsers.slice(1);
-
     // Conversations + messages + QA audits behind Auto QA and Analytics — 14 days of
     // volume shaped so AI resolves a growing share (Analytics line chart), and every
     // resolved conversation gets audited (QA's "100% auto-audited" KPI).
@@ -421,7 +531,7 @@ async function main() {
         const handleTimeMins = isAi ? randInt(2, 8) : randInt(6, 22);
         const updatedAt = isOpen ? createdAt : new Date(createdAt.getTime() + handleTimeMins * 60_000);
         const id = randomUUID();
-        const intent = CONV_INTENTS[convIndex % CONV_INTENTS.length];
+        const intent = CONV_INTENTS[convIndex % CONV_INTENTS.length]!;
         const channel = CONV_CHANNELS[convIndex % CONV_CHANNELS.length];
 
         conversations.push({
@@ -439,14 +549,21 @@ async function main() {
         });
 
         const responseSecs = isAi ? randInt(5, 40) : randInt(45, 420);
+        const msgTpl = INTENT_MESSAGES[intent] ?? INTENT_MESSAGES.order_tracking!;
         messages.push(
-          { tenantId: tenant.id, conversationId: id, senderType: 'customer', body: 'Customer message', createdAt },
+          {
+            tenantId: tenant.id,
+            conversationId: id,
+            senderType: 'customer',
+            body: msgTpl.customer[convIndex % msgTpl.customer.length],
+            createdAt,
+          },
           {
             tenantId: tenant.id,
             conversationId: id,
             senderType: isAi ? 'bot' : 'agent',
             senderId: assignedUserId,
-            body: isAi ? 'Astra AI response' : 'Agent response',
+            body: msgTpl.reply[convIndex % msgTpl.reply.length],
             createdAt: new Date(createdAt.getTime() + responseSecs * 1000),
           },
         );
@@ -515,7 +632,7 @@ async function main() {
         tenantId: tenant.id,
         category: a.category,
         title: a.title,
-        body: `Placeholder content for "${a.title}".`,
+        body: a.body,
         status: 'published',
       })),
     });
@@ -524,6 +641,241 @@ async function main() {
       `Seeded ${newContacts.length} contacts, ${created} tickets, ${KB_ARTICLES.length + PORTAL_KB_ARTICLES.length} KB articles, ` +
         `${agentUsers.length} agents, ${conversations.length} conversations, ${qaAudits.length} QA audits, surveys and ${NUDGE_RULES.length} rules.`,
     );
+  });
+
+  // Command Centre (Guide §10, Overview endpoint) reads rolling 24h/48h windows off
+  // `now`, unlike the 14-day historical batch above (dated relative to whenever this
+  // script last ran). Kept in its own block. Each piece is guarded independently —
+  // NOT by one combined check — so e.g. agent status/mentions/notifications still
+  // get seeded even on a run where the historical batch alone already covers the
+  // last-48h conversation window (a single combined guard previously skipped all of
+  // them together, leaving agentsLive/mentions/unreadNotifications stuck at zero).
+  await withTenant(prisma, tenant.id, async (tx) => {
+    const contacts = await tx.contact.findMany({ select: { id: true } });
+    const allUsers = await tx.user.findMany();
+    const agents = allUsers.filter((u) => u.title !== 'Team Lead');
+    if (!contacts.length || !agents.length) {
+      console.log('No contacts/agents yet for the live window — run the main seed block first.');
+      return;
+    }
+
+    await Promise.all(
+      allUsers.map((u, i) =>
+        tx.agentStatusRow.upsert({
+          where: { tenantId_userId: { tenantId: tenant.id, userId: u.id } },
+          update: {},
+          create: { tenantId: tenant.id, userId: u.id, status: AGENT_STATUS_POOL[i % AGENT_STATUS_POOL.length]! },
+        }),
+      ),
+    );
+    console.log(`Refreshed ${allUsers.length} agent status rows.`);
+
+    const since48h = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    // Gated on OPEN conversations specifically, not total volume — the 14-day historical
+    // batch above resolves almost everything by design (it feeds Analytics/QA "resolved"
+    // metrics), so Omni Inbox (which only lists non-resolved threads) would otherwise be
+    // left with the 1-2 stragglers that batch happens to leave open.
+    const freshOpenCount = await tx.conversation.count({
+      where: { createdAt: { gte: since48h }, status: { not: 'resolved' } },
+    });
+    let freshTickets: { id: string; resolved: boolean; assignedUserId: string | null; createdAt: Date }[] = [];
+    let escalationTargets: typeof freshTickets = [];
+    let freshConvCount = 0;
+
+    if (freshOpenCount >= 15) {
+      console.log('Rolling conversation window already fresh — skipping fresh conversations.');
+    } else {
+    const FRESH_TOTAL = 70;
+    const freshConversations: any[] = [];
+    const freshMessages: any[] = [];
+    const freshTicketSeeds: { convId: string; contactId?: string; assignedUserId: string | null; createdAt: Date; resolved: boolean; intent: string }[] = [];
+    for (let i = 0; i < FRESH_TOTAL; i++) {
+      const createdAt = new Date(Date.now() - randInt(0, 47) * 60 * 60 * 1000 - randInt(0, 59) * 60_000);
+      const isAi = i % 10 < 7; // ~70% AI-resolved, matching the prototype's resolution mix
+      const isOpen = i % 10 >= 8; // ~20% still in progress — enough for a lively Omni Inbox list
+      const contact = contacts[i % contacts.length];
+      const assignedUserId = isAi ? null : agents[i % agents.length]!.id;
+      const handleMins = isAi ? randInt(2, 8) : randInt(6, 22);
+      const updatedAt = isOpen ? createdAt : new Date(createdAt.getTime() + handleMins * 60_000);
+      const id = randomUUID();
+      const channel = CONV_CHANNELS[i % CONV_CHANNELS.length];
+      const intent = CONV_INTENTS[i % CONV_INTENTS.length]!;
+
+      freshConversations.push({
+        id,
+        tenantId: tenant.id,
+        contactId: contact?.id,
+        channel,
+        status: isOpen ? 'open' : 'resolved',
+        sentiment: CONV_SENTIMENTS[i % CONV_SENTIMENTS.length],
+        intent,
+        language: CONV_LANGUAGES[i % CONV_LANGUAGES.length],
+        assignedUserId,
+        createdAt,
+        updatedAt,
+      });
+
+      const responseSecs = isAi ? randInt(5, 40) : randInt(45, 420);
+      const msgTpl = INTENT_MESSAGES[intent] ?? INTENT_MESSAGES.order_tracking!;
+      freshMessages.push(
+        {
+          tenantId: tenant.id,
+          conversationId: id,
+          senderType: 'customer',
+          body: msgTpl.customer[i % msgTpl.customer.length],
+          createdAt,
+        },
+        {
+          tenantId: tenant.id,
+          conversationId: id,
+          senderType: isAi ? 'bot' : 'agent',
+          senderId: assignedUserId,
+          body: msgTpl.reply[i % msgTpl.reply.length],
+          createdAt: new Date(createdAt.getTime() + responseSecs * 1000),
+        },
+      );
+
+      // ~1 in 5 conversations escalates into a ticket — enough for live SLA events/escalations.
+      // Ticket assignment is decided independently of the conversation's own assignedUserId
+      // (a human can still be assigned to follow up even when Astra AI resolved the chat) —
+      // using seed.assignedUserId directly here would always be null, since i%5===0 (ticket
+      // eligibility) implies i%10<7 (isAi) for every multiple of 5, so no ticket would ever
+      // get a real assignee.
+      if (i % 5 === 0) {
+        const ticketAssignedUserId = i % 3 === 0 ? null : agents[i % agents.length]!.id;
+        freshTicketSeeds.push({ convId: id, contactId: contact?.id, assignedUserId: ticketAssignedUserId, createdAt, resolved: !isOpen, intent });
+      }
+    }
+    await tx.conversation.createMany({ data: freshConversations });
+    await tx.message.createMany({ data: freshMessages });
+    freshConvCount = freshConversations.length;
+
+    const csatPool = weighted<number>([[5, 5], [4, 4], [3, 1]]);
+    await Promise.all(
+      freshConversations
+        .filter((_c, i) => i % 4 === 0)
+        .map((c, i) =>
+          tx.survey.create({
+            data: {
+              tenantId: tenant.id,
+              contactId: c.contactId,
+              type: 'csat',
+              score: csatPool[i % csatPool.length],
+              channel: CHANNELS[i % CHANNELS.length],
+              createdAt: c.createdAt,
+            },
+          }),
+        ),
+    );
+
+    const NON_RESOLVED_TICKET_STATUSES = ['new', 'in_progress', 'waiting'] as const;
+    for (let ti = 0; ti < freshTicketSeeds.length; ti++) {
+      const seed = freshTicketSeeds[ti]!;
+      const priority = seed.resolved ? 'p3' : ['p1', 'p2'][randInt(0, 1)]!;
+      const ticket = await tx.ticket.create({
+        data: {
+          tenantId: tenant.id,
+          extRef: await nextRef(tx, tenant.id, 'AQ-T-'),
+          contactId: seed.contactId,
+          subject: INTENT_LABELS[seed.intent] ?? 'Support query',
+          category: INTENT_LABELS[seed.intent],
+          priority,
+          status: seed.resolved ? 'resolved' : NON_RESOLVED_TICKET_STATUSES[ti % NON_RESOLVED_TICKET_STATUSES.length],
+          assignedUserId: seed.assignedUserId,
+          createdAt: seed.createdAt,
+        },
+      });
+      freshTickets.push({ id: ticket.id, resolved: seed.resolved, assignedUserId: seed.assignedUserId, createdAt: seed.createdAt });
+    }
+
+    // Resolution SLA events — a few open tickets get a near-term/overdue target so
+    // nav's "at risk" badge has something real to count (no minute-sweep worker exists
+    // yet to keep `breached` live, per Guide §15 — Nav/Analytics compute risk from targetAt).
+    await tx.slaEvent.createMany({
+      data: freshTickets.map((t, i) => {
+        const resolutionMins = SLA_RESOLUTION_MINS[i % SLA_RESOLUTION_MINS.length]!;
+        const targetAt = t.resolved
+          ? new Date(t.createdAt.getTime() + resolutionMins * 60_000)
+          : i % 3 === 0
+            ? new Date(Date.now() + randInt(-10, 25) * 60_000) // at risk / already overdue
+            : new Date(t.createdAt.getTime() + resolutionMins * 60_000);
+        return {
+          tenantId: tenant.id,
+          ticketId: t.id,
+          kind: 'resolution',
+          targetAt,
+          metAt: t.resolved ? new Date(t.createdAt.getTime() + randInt(20, resolutionMins - 10) * 60_000) : null,
+          breached: false,
+        };
+      }),
+    });
+
+    // Escalate ~1 in 3 fresh tickets to a different agent than the one assigned.
+    escalationTargets = freshTickets.filter((_t, i) => i % 3 === 0);
+    for (const t of escalationTargets) {
+      const toAgent = agents.find((a) => a.id !== t.assignedUserId) ?? agents[0]!;
+      await tx.escalation.create({
+        data: {
+          tenantId: tenant.id,
+          ticketId: t.id,
+          level: 1,
+          escalatedToUserId: toAgent.id,
+          reason: 'No response within SLA window',
+          createdAt: new Date(t.createdAt.getTime() + randInt(5, 30) * 60_000),
+        },
+      });
+    }
+    console.log(`Seeded ${freshConvCount} fresh conversations, ${freshTickets.length} tickets, ${escalationTargets.length} escalations.`);
+    }
+
+    const mentionCount = await tx.socialMention.count();
+    if (mentionCount > 0) {
+      console.log('Social mentions already seeded — skipping.');
+    } else {
+      // Conversation Hub — social mentions behind the "mentions" nav badge.
+      await tx.socialMention.createMany({
+        data: MENTION_SEED.map((m, i) => {
+          const stage = MENTION_STAGE_POOL[i % MENTION_STAGE_POOL.length]!;
+          return {
+            tenantId: tenant.id,
+            source: m.source,
+            authorName: m.author,
+            body: m.body,
+            sentiment: m.sentiment,
+            tough: m.tough,
+            stage,
+            botReply: stage === 'detected' ? null : 'Thanks for reaching out — our team is looking into this right away.',
+            ticketId: stage === 'ticket' ? freshTickets[i % freshTickets.length]?.id : undefined,
+            createdAt: new Date(Date.now() - randInt(0, 47) * 60 * 60 * 1000),
+          };
+        }),
+      });
+      console.log(`Seeded ${MENTION_SEED.length} social mentions.`);
+    }
+
+    const notificationCount = await tx.notification.count();
+    if (notificationCount > 0) {
+      console.log('Notifications already seeded — skipping.');
+    } else {
+      // Topbar bell — a handful of read/unread notifications per agent.
+      const notifications: any[] = [];
+      for (const u of allUsers) {
+        for (let i = 0; i < 4; i++) {
+          const tpl = NOTIFICATION_TEMPLATES[i % NOTIFICATION_TEMPLATES.length]!;
+          const createdAt = new Date(Date.now() - randInt(0, 71) * 60 * 60 * 1000);
+          notifications.push({
+            tenantId: tenant.id,
+            userId: u.id,
+            kind: tpl.kind,
+            body: tpl.body,
+            readAt: i % 2 === 0 ? null : createdAt,
+            createdAt,
+          });
+        }
+      }
+      await tx.notification.createMany({ data: notifications });
+      console.log(`Seeded ${notifications.length} notifications.`);
+    }
   });
 }
 
