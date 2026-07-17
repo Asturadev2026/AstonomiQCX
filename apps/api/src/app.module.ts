@@ -1,5 +1,6 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { AgentBuilderModule } from './agent-builder/agent-builder.module';
+import { ActivityModule } from './activity/activity.module';
 import { AiModule } from './ai/ai.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { AppController } from './app.controller';
@@ -9,11 +10,14 @@ import { AutomationsModule } from './automations/automations.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
 import { ContactCentreModule } from './contact-centre/contact-centre.module';
 import { ContactsModule } from './contacts/contacts.module';
+import { ConversationsModule } from './conversations/conversations.module';
 import { DepartmentsModule } from './departments/departments.module';
 import { FieldServiceModule } from './field-service/field-service.module';
 import { JourneyModule } from './journey/journey.module';
 import { KbModule } from './kb/kb.module';
 import { MacrosModule } from './macros/macros.module';
+import { MentionsModule } from './mentions/mentions.module';
+import { NavModule } from './nav/nav.module';
 import { PortalModule } from './portal/portal.module';
 import { PriorityMatrixModule } from './priority-matrix/priority-matrix.module';
 import { QaModule } from './qa/qa.module';
@@ -36,6 +40,7 @@ import { WorkforceModule } from './workforce/workforce.module';
     AutomationsModule,
     ContactCentreModule,
     ContactsModule,
+    ConversationsModule,
     DepartmentsModule,
     FieldServiceModule,
     JourneyModule,
@@ -54,6 +59,9 @@ import { WorkforceModule } from './workforce/workforce.module';
     WorkforceModule,
     TelephonyModule,
     PriorityMatrixModule,
+    ActivityModule,
+    NavModule,
+    MentionsModule,
   ],
   controllers: [AppController],
 })
