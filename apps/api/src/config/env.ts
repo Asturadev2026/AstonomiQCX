@@ -38,6 +38,8 @@ const schema = z.object({
   EMBEDDINGS_MODEL: z.string().optional(),
   SARVAM_API_KEY: z.string().optional(),
   ELEVENLABS_API_KEY: z.string().optional(),
+  // Defaults to ElevenLabs' long-standing "Rachel" premade voice if unset.
+  ELEVENLABS_VOICE_ID: z.string().optional(),
 });
 
 // Parsed once at import time — a missing or malformed required var stops the app at boot

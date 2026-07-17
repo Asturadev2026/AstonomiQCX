@@ -4,8 +4,14 @@ import { REF_PREFIXES, type CreateTicketDto, type MoveTicketDto } from '@aq/shar
 import { AuditService } from '../audit/audit.service';
 import { SlaService } from '../sla/sla.service';
 import { RtGateway } from '../realtime/rt.gateway';
+import { RuleEngineService } from '../automations/rule-engine.service';
 import type { AuthenticatedUser } from '../auth/jwt.guard';
 import { priorityFromMatrix } from './priority';
+
+export interface TicketListRow extends Ticket {
+  contact: { name: string | null } | null;
+  assignedUser: { name: string; avatarColor: string | null } | null;
+}
 
 /** The Tickets service — Guide §8.3, the reference pattern every module copies. */
 @Injectable()
@@ -16,6 +22,7 @@ export class TicketsService {
     private audit: AuditService,
     private sla: SlaService,
     private rt: RtGateway,
+    private rules: RuleEngineService,
   ) {}
 
   // userId is nullable for system-raised tickets (e.g. Astra escalating a chat — Guide §10.4).
@@ -24,24 +31,44 @@ export class TicketsService {
       const extRef = await nextRef(tx, tenantId, REF_PREFIXES.ticket);
 
       let segment: string | null = null;
+      let conversation: { channel: string; sentiment: string | null; language: string | null } | null = null;
       if (dto.contactId) {
         segment = (await tx.contact.findUnique({ where: { id: dto.contactId }, select: { segment: true } }))
           ?.segment ?? null;
       }
+      if (dto.conversationId) {
+        conversation = await tx.conversation.findUnique({
+          where: { id: dto.conversationId },
+          select: { channel: true, sentiment: true, language: true },
+        });
+      }
       const priority = dto.priority ?? priorityFromMatrix({ text: dto.subject, segment });
 
-      const ticket = await tx.ticket.create({
+      let ticket = await tx.ticket.create({
         data: {
           tenantId,
           extRef,
           subject: dto.subject,
           description: dto.description,
           contactId: dto.contactId,
+          conversationId: dto.conversationId,
           priority,
           category: dto.category,
           departmentId: dto.departmentId,
           status: 'new',
         },
+      });
+
+      // Guide §12.3: rules run right on this real event, in the same transaction.
+      ticket = await this.rules.runForTicketCreated(tx, tenantId, ticket, {
+        text: `${dto.subject} ${dto.description ?? ''}`,
+        category: ticket.category,
+        priority: ticket.priority,
+        status: ticket.status,
+        segment,
+        channel: conversation?.channel ?? null,
+        sentiment: conversation?.sentiment ?? null,
+        language: conversation?.language ?? null,
       });
 
       await this.sla.startTimers(tx, tenantId, ticket);
@@ -69,20 +96,31 @@ export class TicketsService {
 
   // 'ticket.view.all' sees everything; 'ticket.view.assigned' sees only their own —
   // this scoping is a business rule, so it lives here rather than in the guard.
-  private viewScope(user: AuthenticatedUser): { assignedUserId?: string } {
+  private viewScope(user?: AuthenticatedUser): { assignedUserId?: string } {
+    // Reads are unguarded (no login flow wired into apps/web yet — pages/Login.tsx) so
+    // there's no authenticated user to scope by; default to "view all" rather than
+    // 403ing an otherwise-open view. Writes still require a real user (see controller).
+    if (!user) return {};
     if (user.permissions.includes('*') || user.permissions.includes('ticket.view.all')) return {};
     if (user.permissions.includes('ticket.view.assigned')) return { assignedUserId: user.id };
     throw new ForbiddenException('You do not have permission for this');
   }
 
-  list(tenantId: string, user: AuthenticatedUser): Promise<Ticket[]> {
+  list(tenantId: string, user?: AuthenticatedUser): Promise<TicketListRow[]> {
     const scope = this.viewScope(user);
     return withTenant(this.prisma, tenantId, (tx) =>
-      tx.ticket.findMany({ where: scope, orderBy: { createdAt: 'desc' } }),
+      tx.ticket.findMany({
+        where: scope,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          contact: { select: { name: true } },
+          assignedUser: { select: { name: true, avatarColor: true } },
+        },
+      }),
     );
   }
 
-  async getOne(tenantId: string, id: string, user: AuthenticatedUser): Promise<Ticket> {
+  async getOne(tenantId: string, id: string, user?: AuthenticatedUser): Promise<Ticket> {
     const scope = this.viewScope(user);
     return withTenant(this.prisma, tenantId, async (tx) => {
       const ticket = await tx.ticket.findUnique({ where: { id, ...scope } });

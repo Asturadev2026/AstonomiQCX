@@ -6,6 +6,7 @@ export interface CreateTicketDto {
   subject: string;
   description?: string;
   contactId?: string;
+  conversationId?: string;
   priority?: Priority;
   category?: string;
   departmentId?: string;

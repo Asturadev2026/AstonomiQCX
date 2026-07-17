@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import type {
+  AgentFlowDto,
   AskAstraPayload,
   AstraAnswer,
   AnalyticsPayload,
@@ -8,18 +9,32 @@ import type {
   ContactOrder,
   ContactProfile,
   ContactTicket,
+  ConversationSummary,
+  ConversationThread,
+  ConvHubPayload,
   CreateContactDto,
+  CreateKbArticleDto,
+  CreateMacroDto,
+  CreateTicketDto,
   FeedItem,
+  FlowNodeConfig,
   JourneyPayload,
+  KbArticle,
+  MacroDto,
+  MentionCard,
+  MoveTicketDto,
   NavCounts,
   OverviewPayload,
   PortalPayload,
   QaPayload,
   RecentCampaign,
+  RuleDto,
   SendCampaignDto,
   SentimentMonth,
   SessionUser,
   SurveysPayload,
+  ThreadMessage,
+  TicketRow,
 } from './types';
 
 /**
@@ -53,6 +68,43 @@ async function post<TBody, TResult>(path: string, payload: TBody): Promise<TResu
   });
   if (!res.ok) {
     throw new Error(`POST /api/v1${path} failed: ${res.status}`);
+  }
+  const body = (await res.json()) as { data: TResult };
+  return body.data
+}
+
+async function patch<TResult>(path: string): Promise<TResult> {
+  const res = await fetch(`/api/v1${path}`, {
+    method: 'PATCH',
+    headers: DEV_TENANT_HEADER,
+  });
+  if (!res.ok) {
+    throw new Error(`PATCH /api/v1${path} failed: ${res.status}`);
+  }
+  const body = (await res.json()) as { data: TResult };
+  return body.data;
+}
+
+async function postAction<TResult>(path: string): Promise<TResult> {
+  const res = await fetch(`/api/v1${path}`, {
+    method: 'POST',
+    headers: DEV_TENANT_HEADER,
+  });
+  if (!res.ok) {
+    throw new Error(`POST /api/v1${path} failed: ${res.status}`);
+  }
+  const body = (await res.json()) as { data: TResult };
+  return body.data;
+}
+
+async function patchBody<TBody, TResult>(path: string, payload: TBody): Promise<TResult> {
+  const res = await fetch(`/api/v1${path}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...DEV_TENANT_HEADER },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(`PATCH /api/v1${path} failed: ${res.status}`);
   }
   const body = (await res.json()) as { data: TResult };
   return body.data;
@@ -171,6 +223,106 @@ export function useContactTimeline(contactId: string | undefined) {
   });
 }
 
+export function useConversations(channel?: string) {
+  return useQuery<ConversationSummary[]>({
+    queryKey: ['conversations', channel ?? 'all'],
+    queryFn: () => api(`/conversations${channel ? `?channel=${channel}` : ''}`),
+    refetchInterval: 15_000,
+  });
+}
+
+export function useConversationThread(id: string | undefined) {
+  return useQuery<ConversationThread>({
+    queryKey: ['conversations', 'thread', id],
+    queryFn: () => api(`/conversations/${id}`),
+    enabled: !!id,
+  });
+}
+
+function invalidateConversation(queryClient: ReturnType<typeof useQueryClient>, id: string) {
+  void queryClient.invalidateQueries({ queryKey: ['conversations', 'thread', id] });
+  void queryClient.invalidateQueries({ queryKey: ['conversations', 'all'] });
+  void queryClient.invalidateQueries({ queryKey: ['nav', 'counts'] });
+}
+
+export function useSendReply(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation<ThreadMessage, Error, string>({
+    mutationFn: (text) => post(`/conversations/${id}/messages`, { text }),
+    onSuccess: () => invalidateConversation(queryClient, id),
+  });
+}
+
+export function useAssignToMe(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation<{ id: string; assignedUserId: string }, Error, void>({
+    mutationFn: () => patch(`/conversations/${id}/assign`),
+    onSuccess: () => invalidateConversation(queryClient, id),
+  });
+}
+
+export function useResolveConversation(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation<{ id: string; status: string }, Error, void>({
+    mutationFn: () => patch(`/conversations/${id}/resolve`),
+    onSuccess: () => invalidateConversation(queryClient, id),
+  });
+}
+
+export function useConvHub(group?: string) {
+  return useQuery<ConvHubPayload>({
+    queryKey: ['mentions', group ?? 'all'],
+    queryFn: () => api(`/mentions/summary${group ? `?group=${group}` : ''}`),
+    refetchInterval: 15_000,
+  });
+}
+
+export function useEscalateMention() {
+  const queryClient = useQueryClient();
+  return useMutation<MentionCard, Error, string>({
+    mutationFn: (id) => postAction(`/mentions/${id}/escalate`),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['mentions'] }),
+  });
+}
+
+export function useCreateMentionTicket() {
+  const queryClient = useQueryClient();
+  return useMutation<MentionCard, Error, string>({
+    mutationFn: (id) => postAction(`/mentions/${id}/ticket`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['mentions'] });
+      void queryClient.invalidateQueries({ queryKey: ['nav', 'counts'] });
+    },
+  });
+}
+
+export function useTickets() {
+  return useQuery<TicketRow[]>({
+    queryKey: ['tickets'],
+    queryFn: () => api('/tickets'),
+    refetchInterval: 15_000,
+  });
+}
+
+export function useCreateTicket() {
+  const queryClient = useQueryClient();
+  return useMutation<TicketRow, Error, CreateTicketDto>({
+    mutationFn: (payload) => post('/tickets', payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      void queryClient.invalidateQueries({ queryKey: ['nav', 'counts'] });
+    },
+  });
+}
+
+export function useMoveTicket() {
+  const queryClient = useQueryClient();
+  return useMutation<TicketRow, Error, { id: string; status: MoveTicketDto['status'] }>({
+    mutationFn: ({ id, status }) => patchBody(`/tickets/${id}/move`, { status }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['tickets'] }),
+  });
+}
+
 export function useCreateContact() {
   const queryClient = useQueryClient();
   return useMutation<ContactDto, Error, CreateContactDto>({
@@ -185,5 +337,109 @@ export function useCreateContact() {
 export function useAskAstra() {
   return useMutation<AstraAnswer, Error, AskAstraPayload>({
     mutationFn: (payload) => post('/ai/ask', payload),
+  });
+}
+
+export function useAgentFlow() {
+  return useQuery<AgentFlowDto>({
+    queryKey: ['agent-flows', 'active'],
+    queryFn: () => api('/agent-flows/active'),
+  });
+}
+
+export function useUpdateFlowNode() {
+  const queryClient = useQueryClient();
+  return useMutation<AgentFlowDto, Error, { flowId: string; nodeId: string; config: FlowNodeConfig }>({
+    mutationFn: ({ flowId, nodeId, config }) => post(`/agent-flows/${flowId}/nodes/${nodeId}`, { config }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['agent-flows', 'active'], data);
+    },
+  });
+}
+
+export function usePublishFlow() {
+  const queryClient = useQueryClient();
+  return useMutation<AgentFlowDto, Error, { flowId: string }>({
+    mutationFn: ({ flowId }) => post(`/agent-flows/${flowId}/publish`, {}),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['agent-flows', 'active'], data);
+    },
+  });
+}
+
+export function useRules() {
+  return useQuery<RuleDto[]>({
+    queryKey: ['rules'],
+    queryFn: () => api('/rules'),
+  });
+}
+
+export function useToggleRule() {
+  const queryClient = useQueryClient();
+  return useMutation<RuleDto, Error, { id: string }>({
+    mutationFn: ({ id }) => patch(`/rules/${id}/toggle`),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<RuleDto[]>(['rules'], (rules) =>
+        rules?.map((r) => (r.id === updated.id ? updated : r)),
+      );
+    },
+  });
+}
+
+export function useKbArticles() {
+  return useQuery<KbArticle[]>({
+    queryKey: ['kb'],
+    queryFn: () => api('/kb'),
+  });
+}
+
+export function useCreateKbArticle() {
+  const queryClient = useQueryClient();
+  return useMutation<KbArticle, Error, CreateKbArticleDto>({
+    mutationFn: (payload) => post('/kb', payload),
+    onSuccess: (created) => {
+      queryClient.setQueryData<KbArticle[]>(['kb'], (articles) => [created, ...(articles ?? [])]);
+    },
+  });
+}
+
+export function useIncrementKbView() {
+  const queryClient = useQueryClient();
+  return useMutation<KbArticle, Error, { id: string }>({
+    mutationFn: ({ id }) => patch(`/kb/${id}/view`),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<KbArticle[]>(['kb'], (articles) =>
+        articles?.map((a) => (a.id === updated.id ? updated : a)),
+      );
+    },
+  });
+}
+
+export function useMacros() {
+  return useQuery<MacroDto[]>({
+    queryKey: ['macros'],
+    queryFn: () => api('/macros'),
+  });
+}
+
+export function useCreateMacro() {
+  const queryClient = useQueryClient();
+  return useMutation<MacroDto, Error, CreateMacroDto>({
+    mutationFn: (payload) => post('/macros', payload),
+    onSuccess: (created) => {
+      queryClient.setQueryData<MacroDto[]>(['macros'], (macros) => [created, ...(macros ?? [])]);
+    },
+  });
+}
+
+export function useUseMacro() {
+  const queryClient = useQueryClient();
+  return useMutation<MacroDto, Error, { id: string }>({
+    mutationFn: ({ id }) => patch(`/macros/${id}/use`),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<MacroDto[]>(['macros'], (macros) =>
+        macros?.map((m) => (m.id === updated.id ? updated : m)),
+      );
+    },
   });
 }
