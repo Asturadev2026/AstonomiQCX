@@ -12,6 +12,88 @@ export interface NavCounts {
   unreadNotifications: number;
 }
 
+// GET /api/v1/conversations?channel=
+export interface ConversationSummary {
+  id: string;
+  contactName: string;
+  initials: string;
+  avatarColor: string;
+  channel: string;
+  preview: string;
+  time: string;
+  sentiment: 'pos' | 'neu' | 'neg' | null;
+  status: string;
+}
+
+// GET /api/v1/conversations/:id
+export interface ThreadMessage {
+  role: 'cust' | 'bot' | 'agent';
+  text: string;
+  time: string;
+}
+export interface ConversationThread {
+  id: string;
+  contactName: string;
+  initials: string;
+  avatarColor: string;
+  channel: string;
+  location: string | null;
+  phone: string | null;
+  linkedOrderRef: string | null;
+  status: string;
+  assignedUserId: string | null;
+  messages: ThreadMessage[];
+  copilot: {
+    sentiment: 'pos' | 'neu' | 'neg' | null;
+    suggestions: string[];
+    kbArticles: string[];
+    configured: boolean;
+    nextBestActions: string[];
+  };
+}
+
+// POST /api/v1/conversations/:id/messages
+export type { ReplyMessageDto } from '@aq/shared';
+
+// GET /api/v1/tickets, POST /api/v1/tickets, PATCH /api/v1/tickets/:id/move
+export type { CreateTicketDto, MoveTicketDto } from '@aq/shared';
+export interface TicketRow {
+  id: string;
+  extRef: string | null;
+  subject: string;
+  priority: 'p1' | 'p2' | 'p3' | 'p4';
+  status: 'new' | 'in_progress' | 'waiting' | 'resolved' | 'closed';
+  contact: { name: string | null } | null;
+  assignedUser: { name: string; avatarColor: string | null } | null;
+  createdAt: string;
+}
+
+// GET /api/v1/mentions/summary?group=
+export interface ConvHubKpis {
+  mentionsThisWeek: number;
+  autoRepliedPct: number;
+  escalatedCount: number;
+  ticketsCreatedCount: number;
+}
+export interface MentionCard {
+  id: string;
+  source: string;
+  authorName: string;
+  authorHandle: string | null;
+  sentiment: 'pos' | 'neu' | 'neg' | null;
+  time: string;
+  tough: boolean;
+  body: string;
+  tags: string[];
+  botReply: string | null;
+  stage: 'detected' | 'bot_replied' | 'escalated' | 'ticket';
+  ticketRef: string | null;
+}
+export interface ConvHubPayload {
+  kpis: ConvHubKpis;
+  mentions: MentionCard[];
+}
+
 // POST /api/v1/ai/ask
 export interface AskAstraPayload {
   question: string;
@@ -301,3 +383,26 @@ export interface SentimentMonth {
   neg: number;
   dominant: 'pos' | 'neu' | 'neg' | null;
 }
+
+// GET /api/v1/agent-flows/active, POST /api/v1/agent-flows/:id/nodes/:nodeId, POST /api/v1/agent-flows/:id/publish
+export type { AgentFlowDto, FlowNode, FlowNodeConfig, FlowNodeType, UpdateFlowNodeDto } from '@aq/shared';
+
+// GET /api/v1/rules, PATCH /api/v1/rules/:id/toggle
+export type { RuleAction, RuleCondition, RuleConditions, RuleDto } from '@aq/shared';
+
+// GET /api/v1/kb, POST /api/v1/kb, PATCH /api/v1/kb/:id/view
+export type { CreateKbArticleDto } from '@aq/shared';
+export interface KbArticle {
+  id: string;
+  title: string;
+  body: string;
+  category: string | null;
+  language: string;
+  status: string;
+  views: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// GET /api/v1/macros, POST /api/v1/macros, PATCH /api/v1/macros/:id/use
+export type { CreateMacroDto, MacroDto } from '@aq/shared';

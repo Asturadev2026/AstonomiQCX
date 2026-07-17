@@ -12,7 +12,9 @@ import { ResponseInterceptor } from './common/response.interceptor';
 import { env } from './config/env';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // rawBody: true — needed to verify Meta's X-Hub-Signature-256 on WhatsApp
+  // webhooks (Guide §13/Appendix E), which must hash the exact raw bytes.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   app.enableCors();
   app.setGlobalPrefix('api/v1', { exclude: ['health'] });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));

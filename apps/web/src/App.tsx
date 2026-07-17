@@ -4,10 +4,19 @@ import { Login } from './pages/Login';
 import { AppShell } from './layout/AppShell';
 import { VIEWS } from './lib/views';
 import { CommandCentre } from './modules/overview/CommandCentre';
+import { OmniInbox } from './modules/inbox/OmniInbox';
+import { ConversationHub } from './modules/convhub/ConversationHub';
+import { TicketsBoard } from './modules/tickets/TicketsBoard';
 import { AddCustomer } from './modules/customer/AddCustomer';
 import { CustomerProfile } from './modules/customer/CustomerProfile';
 import { CustomerJourney } from './modules/journey/CustomerJourney';
 import { AiChatbot } from './modules/chatbot/AiChatbot';
+import { WhatsappBot } from './modules/whatsapp/WhatsappBot';
+import { VoiceAi } from './modules/voice/VoiceAi';
+import { AgentBuilder } from './modules/builder/AgentBuilder';
+import { Automations } from './modules/automations/Automations';
+import { KnowledgeBase } from './modules/kb/KnowledgeBase';
+import { Macros } from './modules/macros/Macros';
 import { SurveysVoc } from './modules/surveys/SurveysVoc';
 import { Campaigns } from './modules/campaigns/Campaigns';
 import { SelfServicePortal } from './modules/portal/SelfServicePortal';
@@ -18,9 +27,18 @@ import { StubPage } from './components/StubPage';
 /** Views with a finished port register here; everything else renders its stub. */
 const PORTED: Record<string, () => JSX.Element | null> = {
   overview: CommandCentre,
+  inbox: OmniInbox,
+  convhub: ConversationHub,
+  tickets: TicketsBoard,
   customer: CustomerProfile,
   journey: CustomerJourney,
   chatbot: AiChatbot,
+  whatsapp: WhatsappBot,
+  voice: VoiceAi,
+  builder: AgentBuilder,
+  automations: Automations,
+  kb: KnowledgeBase,
+  macros: Macros,
   surveys: SurveysVoc,
   campaigns: Campaigns,
   portal: SelfServicePortal,

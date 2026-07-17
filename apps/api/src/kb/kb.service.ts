@@ -27,6 +27,20 @@ export class KbService {
   }
 
   /**
+   * Real view counting — the prototype's article view counts were fabricated;
+   * this makes them real. Raw SQL rather than `tx.kbArticle.update()` on
+   * purpose: Prisma's `@updatedAt` bumps on ANY update to the row, which
+   * would make "Updated X ago" lie and say "just now" every time someone
+   * merely views an article rather than edits it.
+   */
+  async incrementView(tenantId: string, id: string): Promise<KbArticle> {
+    return withTenant(this.prisma, tenantId, async (tx) => {
+      await tx.$executeRaw`UPDATE kb_articles SET views = views + 1 WHERE id = ${id}::uuid`;
+      return tx.kbArticle.findUniqueOrThrow({ where: { id } });
+    });
+  }
+
+  /**
    * Finds articles whose title/body mention any of the question's words.
    * A stand-in for real semantic search (Guide §10.2/§10.3) — that needs an
    * embeddings provider (Voyage) to fingerprint articles and questions, which
