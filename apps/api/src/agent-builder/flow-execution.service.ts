@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { getPrisma, withTenant, type Order } from '@aq/db';
 import type { AgentFlowDefinition, AstraAnswerDto } from '@aq/shared';
+import { AiPersonaService } from '../ai-persona/ai-persona.service';
 import { KbService } from '../kb/kb.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { isConfigured, llmComplete, LlmAuthError } from '../ai/llm';
@@ -35,6 +36,7 @@ export class FlowExecutionService {
     private flows: AgentFlowService,
     private kb: KbService,
     private tickets: TicketsService,
+    private persona: AiPersonaService,
   ) {}
 
   async run(tenantId: string, question: string, options: RunOptions = {}): Promise<AstraAnswerDto> {
@@ -101,9 +103,11 @@ export class FlowExecutionService {
               ? `Their most recent order: ${ctx.order.extRef ?? ctx.order.id}, "${ctx.order.description ?? 'item'}", ` +
                 `status: ${ctx.order.status ?? 'unknown'}, amount: ₹${ctx.order.amount ?? '?'}.\n\n`
               : '';
+            const persona = await this.persona.get(tenantId);
+            const personaInstruction = this.persona.buildInstruction(persona);
             const styleInstruction = options.channel === 'voice' ? `${VOICE_STYLE_INSTRUCTION} ` : '';
             const prompt =
-              `You are Astra, the support assistant. ${styleInstruction}The customer's detected intent is ` +
+              `You are Astra, the support assistant. ${personaInstruction ? `${personaInstruction} ` : ''}${styleInstruction}The customer's detected intent is ` +
               `"${ctx.intent ?? 'other'}". ${orderLine}Answer the customer ONLY using the knowledge base context ` +
               `below (and the order details above if relevant). Reply in ${language}. If the answer is not in the ` +
               `context, or the issue needs a human (like a refund or complaint), reply with exactly the word ` +

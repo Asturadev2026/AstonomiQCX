@@ -1,8 +1,16 @@
 import { useEffect, useState } from 'react';
-import { useAgentFlow, usePublishFlow, useUpdateFlowNode } from '../../lib/api/hooks';
+import { useAgentFlow, useAiPersona, usePublishFlow, useUpdateAiPersona, useUpdateFlowNode } from '../../lib/api/hooks';
 import { ErrorState, LoadingState } from '../../components/states';
 import { useToast } from '../../components/Toast';
-import type { FlowNode, FlowNodeConfig } from '../../lib/api/types';
+import type { AiPersonaTone, FlowNode, FlowNodeConfig } from '../../lib/api/types';
+
+const TONE_OPTIONS: { value: AiPersonaTone; label: string }[] = [
+  { value: 'friendly', label: 'Friendly' },
+  { value: 'formal', label: 'Formal' },
+  { value: 'concise', label: 'Concise' },
+  { value: 'empathetic', label: 'Empathetic' },
+  { value: 'playful', label: 'Playful' },
+];
 
 /**
  * Agent Builder — exact port of the prototype's #builder section
@@ -46,13 +54,18 @@ export function AgentBuilder() {
   const { data, isLoading, error, refetch } = useAgentFlow();
   const updateNode = useUpdateFlowNode();
   const publishFlow = usePublishFlow();
+  const { data: persona } = useAiPersona();
+  const updatePersona = useUpdateAiPersona();
   const toast = useToast();
 
+  const [tab, setTab] = useState<'flow' | 'persona'>('flow');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [intentsText, setIntentsText] = useState('');
   const [question, setQuestion] = useState('');
   const [optionsText, setOptionsText] = useState('');
   const [condition, setCondition] = useState('');
+  const [tone, setTone] = useState<AiPersonaTone>('friendly');
+  const [description, setDescription] = useState('');
 
   const nodes = data?.definition.nodes ?? [];
   const selected = nodes.find((n) => n.id === selectedId) ?? nodes[1] ?? nodes[0] ?? null;
@@ -64,6 +77,12 @@ export function AgentBuilder() {
     setOptionsText((selected.config.options ?? []).join(', '));
     setCondition(selected.config.condition ?? '');
   }, [selected?.id]);
+
+  useEffect(() => {
+    if (!persona) return;
+    setTone(persona.tone);
+    setDescription(persona.description);
+  }, [persona]);
 
   if (isLoading) return <LoadingState />;
   if (error || !data) return <ErrorState error={error} retry={() => void refetch()} />;
@@ -98,6 +117,16 @@ export function AgentBuilder() {
     );
   }
 
+  function savePersona() {
+    updatePersona.mutate(
+      { tone, description },
+      {
+        onSuccess: () => toast('Persona saved ✓'),
+        onError: (err) => toast(err instanceof Error ? err.message : 'Could not save persona'),
+      },
+    );
+  }
+
   const selectedIndex = selected ? nodes.findIndex((n) => n.id === selected.id) : -1;
   const nextNode = selectedIndex >= 0 ? nodes[selectedIndex + 1] : undefined;
 
@@ -118,100 +147,143 @@ export function AgentBuilder() {
           Publish
         </button>
       </div>
-      <div className="builder">
-        <div className="palette card">
-          <div className="cap" style={{ marginBottom: 12 }}>
-            Drag a block →
-          </div>
-          <div className="pnode">
-            <span className="pn-ic b-blue">⚡</span> Trigger
-          </div>
-          <div className="pnode">
-            <span className="pn-ic b-indigo">🧠</span> Detect intent
-          </div>
-          <div className="pnode">
-            <span className="pn-ic b-sky">🔗</span> Fetch data
-          </div>
-          <div className="pnode">
-            <span className="pn-ic b-amber">❓</span> Ask question
-          </div>
-          <div className="pnode">
-            <span className="pn-ic b-green">💬</span> Send reply
-          </div>
-          <div className="pnode">
-            <span className="pn-ic b-pink">🙋</span> Human handoff
-          </div>
-        </div>
-        <div className="canvas" id="canvas">
-          {nodes.map((n, i) => (
-            <div key={n.id}>
-              <div className={`flow-node ${selected?.id === n.id ? 'sel' : ''}`} onClick={() => setSelectedId(n.id)}>
-                <div className="fn-h">
-                  <span className={`fn-ic ${n.badge}`}>{n.icon}</span>
-                  {n.title}
-                </div>
-                <div className="fn-d">{n.subtitle}</div>
-              </div>
-              {i < nodes.length - 1 && <div className="flow-link" />}
-            </div>
-          ))}
-        </div>
-        <div className="card cfg" id="nodeCfg">
-          {selected && (
-            <>
-              <div className="cop-h" style={{ marginBottom: 14 }}>
-                <span className={`fn-ic ${selected.badge}`}>{selected.icon}</span> {selected.title}
-              </div>
-              <div className="cfg-row">
-                <label>Block type</label>
-                <input value={selected.subtitle} readOnly />
-              </div>
-              <div className="cfg-row">
-                <label>What it does</label>
-                <textarea style={{ height: 96 }} readOnly value={explanation(selected)} />
-              </div>
 
-              {selected.type === 'detect_intent' && (
-                <div className="cfg-row">
-                  <label>Intents (comma separated)</label>
-                  <input value={intentsText} onChange={(e) => setIntentsText(e.target.value)} />
-                </div>
-              )}
-
-              {selected.type === 'ask_question' && (
-                <>
-                  <div className="cfg-row">
-                    <label>Clarifying question</label>
-                    <input value={question} onChange={(e) => setQuestion(e.target.value)} />
-                  </div>
-                  <div className="cfg-row">
-                    <label>Quick-reply options (comma separated)</label>
-                    <input value={optionsText} onChange={(e) => setOptionsText(e.target.value)} />
-                  </div>
-                </>
-              )}
-
-              {selected.type === 'human_handoff' && (
-                <div className="cfg-row">
-                  <label>Escalate when</label>
-                  <input value={condition} onChange={(e) => setCondition(e.target.value)} />
-                </div>
-              )}
-
-              <div className="cfg-row">
-                <label>On success, go to</label>
-                <select disabled value={nextNode ? nextNode.title : ''}>
-                  <option>{nextNode ? nextNode.title : '— end of flow —'}</option>
-                </select>
-              </div>
-
-              <button className="btn btn-g" style={{ width: '100%', justifyContent: 'center' }} onClick={saveBlock} disabled={updateNode.isPending}>
-                Save block
-              </button>
-            </>
-          )}
-        </div>
+      <div className="tabrow">
+        <button className={tab === 'flow' ? 'on' : ''} onClick={() => setTab('flow')}>
+          Flow
+        </button>
+        <button className={tab === 'persona' ? 'on' : ''} onClick={() => setTab('persona')}>
+          Persona
+        </button>
       </div>
+
+      {tab === 'persona' && (
+        <div className="card" style={{ maxWidth: 520 }}>
+          <div className="cap" style={{ marginBottom: 14 }}>
+            Sets Astra's tone and style for every channel — Chatbot, WhatsApp and Voice — regardless of which flow is
+            published.
+          </div>
+          <div className="cfg-row">
+            <label>Tone</label>
+            <select value={tone} onChange={(e) => setTone(e.target.value as AiPersonaTone)}>
+              {TONE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="cfg-row">
+            <label>Custom instructions (optional)</label>
+            <textarea
+              style={{ height: 96 }}
+              placeholder="e.g. Always apologize for delivery delays. Never promise a refund date."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
+          <button className="btn btn-g" style={{ width: '100%', justifyContent: 'center' }} onClick={savePersona} disabled={updatePersona.isPending}>
+            Save persona
+          </button>
+        </div>
+      )}
+
+      {tab === 'flow' && (
+        <div className="builder">
+          <div className="palette card">
+            <div className="cap" style={{ marginBottom: 12 }}>
+              Drag a block →
+            </div>
+            <div className="pnode">
+              <span className="pn-ic b-blue">⚡</span> Trigger
+            </div>
+            <div className="pnode">
+              <span className="pn-ic b-indigo">🧠</span> Detect intent
+            </div>
+            <div className="pnode">
+              <span className="pn-ic b-sky">🔗</span> Fetch data
+            </div>
+            <div className="pnode">
+              <span className="pn-ic b-amber">❓</span> Ask question
+            </div>
+            <div className="pnode">
+              <span className="pn-ic b-green">💬</span> Send reply
+            </div>
+            <div className="pnode">
+              <span className="pn-ic b-pink">🙋</span> Human handoff
+            </div>
+          </div>
+          <div className="canvas" id="canvas">
+            {nodes.map((n, i) => (
+              <div key={n.id}>
+                <div className={`flow-node ${selected?.id === n.id ? 'sel' : ''}`} onClick={() => setSelectedId(n.id)}>
+                  <div className="fn-h">
+                    <span className={`fn-ic ${n.badge}`}>{n.icon}</span>
+                    {n.title}
+                  </div>
+                  <div className="fn-d">{n.subtitle}</div>
+                </div>
+                {i < nodes.length - 1 && <div className="flow-link" />}
+              </div>
+            ))}
+          </div>
+          <div className="card cfg" id="nodeCfg">
+            {selected && (
+              <>
+                <div className="cop-h" style={{ marginBottom: 14 }}>
+                  <span className={`fn-ic ${selected.badge}`}>{selected.icon}</span> {selected.title}
+                </div>
+                <div className="cfg-row">
+                  <label>Block type</label>
+                  <input value={selected.subtitle} readOnly />
+                </div>
+                <div className="cfg-row">
+                  <label>What it does</label>
+                  <textarea style={{ height: 96 }} readOnly value={explanation(selected)} />
+                </div>
+
+                {selected.type === 'detect_intent' && (
+                  <div className="cfg-row">
+                    <label>Intents (comma separated)</label>
+                    <input value={intentsText} onChange={(e) => setIntentsText(e.target.value)} />
+                  </div>
+                )}
+
+                {selected.type === 'ask_question' && (
+                  <>
+                    <div className="cfg-row">
+                      <label>Clarifying question</label>
+                      <input value={question} onChange={(e) => setQuestion(e.target.value)} />
+                    </div>
+                    <div className="cfg-row">
+                      <label>Quick-reply options (comma separated)</label>
+                      <input value={optionsText} onChange={(e) => setOptionsText(e.target.value)} />
+                    </div>
+                  </>
+                )}
+
+                {selected.type === 'human_handoff' && (
+                  <div className="cfg-row">
+                    <label>Escalate when</label>
+                    <input value={condition} onChange={(e) => setCondition(e.target.value)} />
+                  </div>
+                )}
+
+                <div className="cfg-row">
+                  <label>On success, go to</label>
+                  <select disabled value={nextNode ? nextNode.title : ''}>
+                    <option>{nextNode ? nextNode.title : '— end of flow —'}</option>
+                  </select>
+                </div>
+
+                <button className="btn btn-g" style={{ width: '100%', justifyContent: 'center' }} onClick={saveBlock} disabled={updateNode.isPending}>
+                  Save block
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import type {
   AgentFlowDto,
+  AiPersonaDto,
   AskAstraPayload,
   AstraAnswer,
   AnalyticsPayload,
@@ -54,6 +55,7 @@ import type {
   TestCallResultDto,
   ThreadMessage,
   TicketRow,
+  UpdateAiPersonaDto,
   WorkforceBoardDto,
   WorkforceRosterDto,
 } from './types';
@@ -384,6 +386,23 @@ export function usePublishFlow() {
     mutationFn: ({ flowId }) => post(`/agent-flows/${flowId}/publish`, {}),
     onSuccess: (data) => {
       queryClient.setQueryData(['agent-flows', 'active'], data);
+    },
+  });
+}
+
+export function useAiPersona() {
+  return useQuery<AiPersonaDto>({
+    queryKey: ['ai', 'persona'],
+    queryFn: () => api('/ai/persona'),
+  });
+}
+
+export function useUpdateAiPersona() {
+  const queryClient = useQueryClient();
+  return useMutation<AiPersonaDto, Error, UpdateAiPersonaDto>({
+    mutationFn: (payload) => post('/ai/persona', payload),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['ai', 'persona'], data);
     },
   });
 }
