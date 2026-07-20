@@ -389,6 +389,9 @@ export interface SentimentMonth {
 // GET /api/v1/agent-flows/active, POST /api/v1/agent-flows/:id/nodes/:nodeId, POST /api/v1/agent-flows/:id/publish
 export type { AgentFlowDto, FlowNode, FlowNodeConfig, FlowNodeType, UpdateFlowNodeDto } from '@aq/shared';
 
+// GET/POST /api/v1/ai/persona
+export type { AiPersonaDto, AiPersonaTone, UpdateAiPersonaDto } from '@aq/shared';
+
 // GET /api/v1/rules, PATCH /api/v1/rules/:id/toggle
 export type { RuleAction, RuleCondition, RuleConditions, RuleDto } from '@aq/shared';
 

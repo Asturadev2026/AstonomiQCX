@@ -19,6 +19,7 @@ packages/db/prisma/dev.db*
 # logs & OS
 *.log
 .DS_Store
+
 Thumbs.db
 
 # IDE

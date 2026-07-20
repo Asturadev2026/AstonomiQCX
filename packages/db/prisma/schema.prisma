@@ -25,6 +25,9 @@ model Tenant {
   dataRegion String   @default("ap-south-1") @map("data_region")
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
+  aiPersonaTone        String @default("friendly") @map("ai_persona_tone")
+  aiPersonaDescription String @default("") @map("ai_persona_description") @db.Text
+
   roles           Role[]
   departments     Department[]
   teams           Team[]

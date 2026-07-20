@@ -19,3 +19,16 @@ export interface AstraAnswerDto {
   /** true when `answer` is Agent Builder's ask_question clarifying prompt, not a completed answer. */
   clarifying?: boolean;
 }
+
+/** Astra's tone/style, shared by every channel (Chatbot, WhatsApp, Voice) regardless of which Agent Builder flow is published. */
+export type AiPersonaTone = 'friendly' | 'formal' | 'concise' | 'empathetic' | 'playful';
+
+export interface AiPersonaDto {
+  tone: AiPersonaTone;
+  description: string;
+}
+
+export interface UpdateAiPersonaDto {
+  tone: AiPersonaTone;
+  description: string;
+}
