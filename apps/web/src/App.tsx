@@ -29,6 +29,9 @@ import { Campaigns } from './modules/campaigns/Campaigns';
 import { SelfServicePortal } from './modules/portal/SelfServicePortal';
 import { AutoQA } from './modules/qa/AutoQA';
 import { Analytics } from './modules/analytics/Analytics';
+import { AuditLog } from './modules/audit/AuditLog';
+import { Billing } from './modules/billing/Billing';
+import { TeamSettings } from './modules/settings/TeamSettings';
 import { StubPage } from './components/StubPage';
 
 /** Views with a finished port register here; everything else renders its stub. */
@@ -58,6 +61,9 @@ const PORTED: Record<string, () => JSX.Element | null> = {
   portal: SelfServicePortal,
   qa: AutoQA,
   analytics: Analytics,
+  audit: AuditLog,
+  billing: Billing,
+  settings: TeamSettings,
 };
 
 export function App() {

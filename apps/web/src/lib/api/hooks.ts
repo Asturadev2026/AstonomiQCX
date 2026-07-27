@@ -5,6 +5,8 @@ import type {
   AskAstraPayload,
   AstraAnswer,
   AnalyticsPayload,
+  AuditLogRow,
+  BillingPayload,
   CallWorkflowStepDto,
   CampaignsPayload,
   CdrRowDto,
@@ -16,6 +18,7 @@ import type {
   ConversationThread,
   ConvHubPayload,
   CreateContactDto,
+  CreateInviteDto,
   CreateKbArticleDto,
   CreateNumberDidDto,
   ContactCentreKpis,
@@ -26,6 +29,7 @@ import type {
   FeedItem,
   FieldServiceKpis,
   FlowNodeConfig,
+  InviteDto,
   IvrMenuOptionDto,
   JourneyPayload,
   KbArticle,
@@ -49,6 +53,8 @@ import type {
   SendCampaignDto,
   SentimentMonth,
   SessionUser,
+  SettingsPayload,
+  SettingsToggles,
   SurveysPayload,
   TelephonyIntegrationStatus,
   TelephonyKpis,
@@ -630,5 +636,49 @@ export function usePriorityMatrix() {
   return useQuery<PriorityMatrixDto>({
     queryKey: ['priority-matrix'],
     queryFn: () => api('/priority-matrix'),
+  });
+}
+
+export function useAuditLog() {
+  return useQuery<AuditLogRow[]>({
+    queryKey: ['audit'],
+    queryFn: () => api('/audit'),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useBilling() {
+  return useQuery<BillingPayload>({
+    queryKey: ['billing'],
+    queryFn: () => api('/billing/overview'),
+  });
+}
+
+export function useSettings() {
+  return useQuery<SettingsPayload>({
+    queryKey: ['settings'],
+    queryFn: () => api('/settings'),
+  });
+}
+
+export function useToggleSetting() {
+  const queryClient = useQueryClient();
+  return useMutation<SettingsToggles, Error, { key: string }>({
+    mutationFn: ({ key }) => patch(`/settings/toggles/${key}`),
+    onSuccess: (toggles) => {
+      queryClient.setQueryData<SettingsPayload>(['settings'], (settings) =>
+        settings ? { ...settings, toggles } : settings,
+      );
+    },
+  });
+}
+
+export function useCreateInvite() {
+  const queryClient = useQueryClient();
+  return useMutation<InviteDto, Error, CreateInviteDto>({
+    mutationFn: (payload) => post('/settings/invites', payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['settings'] });
+    },
   });
 }
