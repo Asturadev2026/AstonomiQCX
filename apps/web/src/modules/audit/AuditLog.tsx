@@ -14,14 +14,14 @@ export function AuditLog() {
   if (isLoading) return <LoadingState />;
   if (error || !data) return <ErrorState error={error} retry={() => void refetch()} />;
 
-  function exportCsv() {
+  const exportCsv = () => {
     downloadCsv(
       `audit-log-${new Date().toISOString().slice(0, 10)}.csv`,
       ['Actor', 'Action', 'Time'],
       data.map((r) => [r.actorName, r.message, `${r.time} ago`]),
     );
     toast('Audit log exported ✓');
-  }
+  };
 
   return (
     <>

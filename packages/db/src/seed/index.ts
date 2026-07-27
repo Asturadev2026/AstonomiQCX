@@ -42,6 +42,27 @@ const KB_ARTICLES = [
   },
 ];
 
+// A few basic articles for the deliberately-sparse Northwind tenant — enough that
+// generic questions (delivery, returns, contact) get a grounded answer instead of
+// escalating on everything just because the tenant has zero KB content.
+const NORTHWIND_KB_ARTICLES = [
+  {
+    title: 'Delivery times and tracking',
+    category: 'Delivery',
+    body: 'Orders are delivered within 3-5 business days. A tracking link is sent by SMS and email once your order ships. If your order is delayed beyond the estimated date, contact support with your order reference (format ZK-xxxxx).',
+  },
+  {
+    title: 'Returns and refunds policy',
+    category: 'Returns',
+    body: 'Items can be returned within 7 days of delivery if unused and in original packaging. Refunds are processed to the original payment method within 5-7 business days of us receiving the returned item.',
+  },
+  {
+    title: 'Contacting support',
+    category: 'Account',
+    body: 'For anything not covered by an order-specific answer, reach us by replying here with your order reference (format ZK-xxxxx) or a description of the issue, and a team member will follow up.',
+  },
+];
+
 // Comments carry keyword phrases the Surveys service tags into VoC themes
 // (fast resolution / friendly agents / delivery delays / refund speed / app issues).
 const CSAT_COMMENTS = [
@@ -437,14 +458,16 @@ async function main() {
   console.log(`Seeded tenant: ${tenant.name} (${tenant.id})`);
 
   const roleByName = new Map<string, string>();
-  for (const role of DEFAULT_ROLES) {
-    const row = await prisma.role.upsert({
-      where: { tenantId_name: { tenantId: tenant.id, name: role.name } },
-      update: { permissions: role.permissions },
-      create: { tenantId: tenant.id, name: role.name, permissions: role.permissions },
-    });
-    roleByName.set(role.name, row.id);
-  }
+  await withTenant(prisma, tenant.id, async (tx) => {
+    for (const role of DEFAULT_ROLES) {
+      const row = await tx.role.upsert({
+        where: { tenantId_name: { tenantId: tenant.id, name: role.name } },
+        update: { permissions: role.permissions },
+        create: { tenantId: tenant.id, name: role.name, permissions: role.permissions },
+      });
+      roleByName.set(role.name, row.id);
+    }
+  });
   console.log(`Seeded ${DEFAULT_ROLES.length} default roles.`);
 
   // Runs unconditionally (unlike the ticket-guarded block below) so teams exist before
@@ -1033,62 +1056,6 @@ async function main() {
     }
   });
 
-<<<<<<< HEAD
-  // A second, lightweight tenant — a different demo business to switch into at
-  // login or via the Tenants admin page. Deliberately sparse (no KB articles,
-  // tickets, or agent flow) so it reads as a distinct, mostly-empty workspace
-  // rather than a Shopnova clone.
-  const secondTenant = await prisma.tenant.upsert({
-    where: { subdomain: 'northwind' },
-    update: {},
-    create: { name: 'Northwind Wellness', subdomain: 'northwind' },
-  });
-  console.log(`Seeded tenant: ${secondTenant.name} (${secondTenant.id})`);
-
-  await withTenant(prisma, secondTenant.id, async (tx) => {
-    for (const role of DEFAULT_ROLES) {
-      await tx.role.upsert({
-        where: { tenantId_name: { tenantId: secondTenant.id, name: role.name } },
-        update: { permissions: role.permissions },
-        create: { tenantId: secondTenant.id, name: role.name, permissions: role.permissions },
-      });
-    }
-  });
-
-  await withTenant(prisma, secondTenant.id, async (tx) => {
-    const existingContacts = await tx.contact.count({ where: { tenantId: secondTenant.id } });
-    if (existingContacts > 0) {
-      console.log('Northwind demo data already seeded — skipping.');
-      return;
-    }
-
-    for (let i = 0; i < 6; i++) {
-      const name = CONTACT_NAMES[i]!;
-      const emailSlug = name.toLowerCase().replace(/\s+/g, '.');
-      const contact = await tx.contact.create({
-        data: {
-          tenantId: secondTenant.id,
-          name,
-          phone: `9${(800000000 + i).toString()}`,
-          email: `${emailSlug}@example.com`,
-          location: CONTACT_CITIES[i],
-        },
-      });
-      if (i % 2 === 0) {
-        await tx.order.create({
-          data: {
-            tenantId: secondTenant.id,
-            contactId: contact.id,
-            extRef: await nextRef(tx, secondTenant.id, 'ZK-'),
-            description: 'Demo order',
-            amount: 799,
-            status: 'delivered',
-          },
-        });
-      }
-    }
-    console.log('Seeded 6 Northwind contacts.');
-=======
   // Billing & Plans + Team & Settings. Plan is global (not tenant-scoped); everything
   // else is guarded independently so a later run only tops up whatever's missing.
   for (const p of DEFAULT_PLANS) {
@@ -1316,7 +1283,74 @@ async function main() {
       await tx.call.createMany({ data: calls });
       console.log(`Seeded ${calls.length} fresh calls.`);
     }
->>>>>>> origin/main
+  });
+
+  // A second, lightweight tenant — a different demo business to switch into at
+  // login or via the Tenants admin page. Deliberately sparse (no tickets or agent
+  // flow beyond AgentBuilder's own default) so it reads as a distinct, mostly-empty
+  // workspace rather than a Shopnova clone.
+  const secondTenant = await prisma.tenant.upsert({
+    where: { subdomain: 'northwind' },
+    update: {},
+    create: { name: 'Northwind Wellness', subdomain: 'northwind' },
+  });
+  console.log(`Seeded tenant: ${secondTenant.name} (${secondTenant.id})`);
+
+  await withTenant(prisma, secondTenant.id, async (tx) => {
+    for (const role of DEFAULT_ROLES) {
+      await tx.role.upsert({
+        where: { tenantId_name: { tenantId: secondTenant.id, name: role.name } },
+        update: { permissions: role.permissions },
+        create: { tenantId: secondTenant.id, name: role.name, permissions: role.permissions },
+      });
+    }
+  });
+
+  await withTenant(prisma, secondTenant.id, async (tx) => {
+    const existingContacts = await tx.contact.count({ where: { tenantId: secondTenant.id } });
+    if (existingContacts > 0) {
+      console.log('Northwind demo data already seeded — skipping.');
+      return;
+    }
+
+    for (let i = 0; i < 6; i++) {
+      const name = CONTACT_NAMES[i]!;
+      const emailSlug = name.toLowerCase().replace(/\s+/g, '.');
+      const contact = await tx.contact.create({
+        data: {
+          tenantId: secondTenant.id,
+          name,
+          phone: `9${(800000000 + i).toString()}`,
+          email: `${emailSlug}@example.com`,
+          location: CONTACT_CITIES[i],
+        },
+      });
+      if (i % 2 === 0) {
+        await tx.order.create({
+          data: {
+            tenantId: secondTenant.id,
+            contactId: contact.id,
+            extRef: await nextRef(tx, secondTenant.id, 'ZK-'),
+            description: 'Demo order',
+            amount: 799,
+            status: 'delivered',
+          },
+        });
+      }
+    }
+    console.log('Seeded 6 Northwind contacts.');
+  });
+
+  await withTenant(prisma, secondTenant.id, async (tx) => {
+    for (const article of NORTHWIND_KB_ARTICLES) {
+      const existing = await tx.kbArticle.findFirst({
+        where: { tenantId: secondTenant.id, title: article.title },
+      });
+      if (!existing) {
+        await tx.kbArticle.create({ data: { tenantId: secondTenant.id, ...article } });
+      }
+    }
+    console.log(`Seeded ${NORTHWIND_KB_ARTICLES.length} Northwind KB articles.`);
   });
 }
 
