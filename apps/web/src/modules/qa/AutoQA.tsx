@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQa } from '../../lib/api/hooks';
 import { ErrorState, LoadingState } from '../../components/states';
-import { useToast } from '../../components/Toast';
+import { Modal } from '../../components/Modal';
 
 /**
  * Auto QA — exact port of the prototype's #qa section.
@@ -10,7 +10,7 @@ import { useToast } from '../../components/Toast';
 
 export function AutoQA() {
   const { data, isLoading, error, refetch } = useQa();
-  const toast = useToast();
+  const [showTrail, setShowTrail] = useState(false);
 
   const [barsOn, setBarsOn] = useState(false);
   useEffect(() => {
@@ -74,8 +74,8 @@ export function AutoQA() {
         <div className="ln" />
       </div>
       <div className="card">
-        {recentAudits.map((q, i) => (
-          <div className="qa-row" key={i}>
+        {recentAudits.slice(0, 5).map((q) => (
+          <div className="qa-row" key={q.id}>
             <div className={`qa-score ${q.scoreClass}`}>{q.score}</div>
             <div className="qbar">
               <div className="qt">
@@ -94,7 +94,7 @@ export function AutoQA() {
                 </span>
               </div>
             </div>
-            <button className="btn btn-o" onClick={() => toast('Opening full audit trail…')}>
+            <button className="btn btn-o" onClick={() => setShowTrail(true)}>
               Review
             </button>
           </div>

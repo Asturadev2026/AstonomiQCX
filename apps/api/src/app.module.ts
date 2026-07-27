@@ -8,6 +8,7 @@ import { AppController } from './app.controller';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { AutomationsModule } from './automations/automations.module';
+import { BillingModule } from './billing/billing.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
 import { ContactCentreModule } from './contact-centre/contact-centre.module';
 import { ContactsModule } from './contacts/contacts.module';
@@ -23,6 +24,7 @@ import { PortalModule } from './portal/portal.module';
 import { PriorityMatrixModule } from './priority-matrix/priority-matrix.module';
 import { QaModule } from './qa/qa.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { SettingsModule } from './settings/settings.module';
 import { SlaModule } from './sla/sla.module';
 import { SurveysModule } from './surveys/surveys.module';
 import { TelephonyModule } from './telephony/telephony.module';
@@ -64,6 +66,8 @@ import { WorkforceModule } from './workforce/workforce.module';
     ActivityModule,
     NavModule,
     MentionsModule,
+    BillingModule,
+    SettingsModule,
   ],
   controllers: [AppController],
 })
