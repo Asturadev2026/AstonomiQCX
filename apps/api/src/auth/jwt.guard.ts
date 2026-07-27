@@ -1,5 +1,6 @@
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
-import { verifyOidcToken, loadUser } from './oidc';
+import { verifyOidcToken, loadUser, loadDevUser } from './oidc';
+import { env } from '../config/env';
 import type { TenantScopedRequest } from '../tenancy/tenant.middleware';
 
 export interface AuthenticatedUser {
@@ -22,7 +23,13 @@ export class JwtGuard implements CanActivate {
     const req = ctx.switchToHttp().getRequest<TenantScopedRequest>();
     const header = req.headers['authorization'] || '';
     const token = header.replace('Bearer ', '');
-    if (!token) throw new UnauthorizedException('No login token');
+    if (!token) {
+      // Dev-only stand-in — see loadDevUser's doc comment. Gated on NODE_ENV so this
+      // path is structurally unreachable in production regardless of any other bug.
+      if (env.NODE_ENV === 'production') throw new UnauthorizedException('No login token');
+      (req as AuthenticatedRequest).user = await loadDevUser(req.tenantId);
+      return true;
+    }
 
     try {
       const claims = await verifyOidcToken(token);
