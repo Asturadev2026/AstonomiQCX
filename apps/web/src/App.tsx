@@ -30,6 +30,9 @@ import { SelfServicePortal } from './modules/portal/SelfServicePortal';
 import { AutoQA } from './modules/qa/AutoQA';
 import { Analytics } from './modules/analytics/Analytics';
 import { TenantsAdmin } from './modules/admin/TenantsAdmin';
+import { AuditLog } from './modules/audit/AuditLog';
+import { Billing } from './modules/billing/Billing';
+import { TeamSettings } from './modules/settings/TeamSettings';
 import { StubPage } from './components/StubPage';
 
 /** Views with a finished port register here; everything else renders its stub. */
@@ -60,6 +63,9 @@ const PORTED: Record<string, () => JSX.Element | null> = {
   qa: AutoQA,
   analytics: Analytics,
   tenants: TenantsAdmin,
+  audit: AuditLog,
+  billing: Billing,
+  settings: TeamSettings,
 };
 
 export function App() {

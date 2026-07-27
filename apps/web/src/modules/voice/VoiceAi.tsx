@@ -1,5 +1,8 @@
 import { useRef, useState } from 'react';
 import { useAskAstra } from '../../lib/api/hooks';
+import { useTestContact } from '../../state/testContact';
+import { getActiveTenant } from '../../state/auth';
+import { CustomerTestPanel } from '../../components/CustomerTestPanel';
 
 /**
  * Voice AI — exact port of the prototype's #voice section (markup/classes
@@ -32,7 +35,9 @@ interface VoiceStatus {
   ttsConfigured: boolean;
 }
 
-const DEV_TENANT_HEADER = { 'x-tenant': 'shopnova' };
+function tenantHeaders() {
+  return { 'x-tenant': getActiveTenant() };
+}
 
 function getSpeechRecognitionCtor(): any {
   return (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition ?? null;
@@ -65,6 +70,7 @@ export function VoiceAi() {
   const [notice, setNotice] = useState<string | null>(null);
   const [ended, setEnded] = useState(false);
   const [ticketRefs, setTicketRefs] = useState<string[]>([]);
+  const { contact } = useTestContact();
   const ask = useAskAstra();
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -88,7 +94,7 @@ export function VoiceAi() {
 
   const fetchVoiceStatus = async (): Promise<VoiceStatus> => {
     try {
-      const res = await fetch('/api/v1/voice/status', { headers: DEV_TENANT_HEADER });
+      const res = await fetch('/api/v1/voice/status', { headers: tenantHeaders() });
       const status = (await res.json()).data as VoiceStatus;
       return status;
     } catch {
@@ -123,7 +129,7 @@ export function VoiceAi() {
 
     const form = new FormData();
     form.append('file', audioBlob, 'turn.webm');
-    const res = await fetch('/api/v1/voice/transcribe', { method: 'POST', headers: DEV_TENANT_HEADER, body: form });
+    const res = await fetch('/api/v1/voice/transcribe', { method: 'POST', headers: tenantHeaders(), body: form });
     const transcribed = (await res.json()).data as { transcript: string; configured: boolean };
     if (!transcribed.configured) {
       setNotice("Speech-to-text isn't connected yet — add SARVAM_API_KEY to enable real transcription.");
@@ -134,13 +140,28 @@ export function VoiceAi() {
   };
 
   // --- Browser fallback STT path (no keys needed) ---
-  const startBrowserListening = () => {
+  const startBrowserListening = async () => {
     const Ctor = getSpeechRecognitionCtor();
     if (!Ctor) {
       setNotice("This browser doesn't support voice recognition — try Chrome or Edge, or add SARVAM_API_KEY.");
       setTurnState('idle');
       return;
     }
+
+    // Request mic permission explicitly first, the same way startRecording()
+    // does for the real-Sarvam path. SpeechRecognition's own permission
+    // prompt is easy to miss, and recognition.start() can throw synchronously
+    // (e.g. permission already blocked) — without this check, either case
+    // leaves the call silently stuck with zero feedback.
+    try {
+      const probe = await navigator.mediaDevices.getUserMedia({ audio: true });
+      probe.getTracks().forEach((t) => t.stop());
+    } catch {
+      setNotice("Couldn't access your microphone — check browser and OS microphone permissions for this site.");
+      setTurnState('idle');
+      return;
+    }
+
     const recognition = new Ctor();
     recognition.lang = 'en-IN';
     recognition.continuous = false;
@@ -197,15 +218,20 @@ export function VoiceAi() {
     };
 
     recognitionRef.current = recognition;
-    recognition.start();
-    setTurnState('recording');
+    try {
+      recognition.start();
+      setTurnState('recording');
+    } catch (err) {
+      setNotice(`Couldn't start voice recognition: ${err instanceof Error ? err.message : String(err)}`);
+      setTurnState('idle');
+    }
   };
 
   const startListening = async () => {
     if (statusRef.current.sttConfigured) {
       await startRecording();
     } else {
-      startBrowserListening();
+      await startBrowserListening();
     }
   };
 
@@ -239,7 +265,7 @@ export function VoiceAi() {
     // each other: the real answer only gets spoken once the filler is done.
     const [, answer] = await Promise.all([
       speakReply('Let me check that for you.'),
-      ask.mutateAsync({ question: transcript, channel: 'voice' }),
+      ask.mutateAsync({ question: transcript, channel: 'voice', contactId: contact?.id }),
     ]);
     let replyText: string;
     if (!answer.configured) {
@@ -269,7 +295,7 @@ export function VoiceAi() {
   const playBackendSpeech = async (text: string): Promise<boolean> => {
     const res = await fetch('/api/v1/voice/synthesize', {
       method: 'POST',
-      headers: { ...DEV_TENANT_HEADER, 'Content-Type': 'application/json' },
+      headers: { ...tenantHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
     });
     if (!res.ok) return false;
@@ -408,6 +434,8 @@ export function VoiceAi() {
         </div>
       </div>
 
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <CustomerTestPanel />
       <div className="card">
         <div className="cop-h">
           <span className="spark">
@@ -480,6 +508,7 @@ export function VoiceAi() {
             </div>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

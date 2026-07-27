@@ -1,4 +1,4 @@
-import type { ContactSource, CustomerSegment, CustomerType } from '../constants';
+import type { ContactSource, CustomerSegment, CustomerType, OrderStatus } from '../constants';
 
 /** Guide §10 pattern, applied to contacts (Customer 360 → Add Customer). */
 
@@ -40,6 +40,14 @@ export interface CreateContactDto {
   consent: ContactConsentDto;
   notes?: string;
   orders: CreateContactOrderDto[];
+}
+
+/** POST /contacts/:id/orders — adds one order to an existing contact (Customer test panel). */
+export interface AddContactOrderDto {
+  description: string;
+  status: OrderStatus;
+  amount: number;
+  qty?: number;
 }
 
 export interface ContactDto {

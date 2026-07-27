@@ -177,6 +177,11 @@ export function OmniInbox() {
                   <div className="bub" style={{ whiteSpace: 'pre-line' }}>
                     {m.text}
                   </div>
+                  {m.sources && m.sources.length > 0 && (
+                    <div className="cap" style={{ margin: '2px 0 0' }}>
+                      📚 Cited: {m.sources.join(', ')}
+                    </div>
+                  )}
                   <span className="mt">{m.time}</span>
                 </div>
               ))}

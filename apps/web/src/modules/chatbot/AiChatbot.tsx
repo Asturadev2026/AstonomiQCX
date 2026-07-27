@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAskAstra } from '../../lib/api/hooks';
 import { useToast } from '../../components/Toast';
+import { useTestContact } from '../../state/testContact';
+import { CustomerTestPanel } from '../../components/CustomerTestPanel';
 
 /**
  * AI Chatbot — exact port of the prototype's #chatbot section (markup and
@@ -27,9 +29,15 @@ const WELCOME =
 export function AiChatbot() {
   const [messages, setMessages] = useState<ChatMessage[]>([{ from: 'bot', text: WELCOME }]);
   const [input, setInput] = useState('');
+  const { contact } = useTestContact();
   const ask = useAskAstra();
   const toast = useToast();
   const bodyRef = useRef<HTMLDivElement>(null);
+
+  // Reset the conversation whenever the Topbar's "test as customer" selection changes.
+  useEffect(() => {
+    setMessages([{ from: 'bot', text: WELCOME }]);
+  }, [contact?.id]);
 
   useEffect(() => {
     if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
@@ -42,7 +50,7 @@ export function AiChatbot() {
     setInput('');
 
     ask.mutate(
-      { question: msg },
+      { question: msg, contactId: contact?.id },
       {
         onSuccess: (res) => {
           const reply = !res.configured
@@ -60,6 +68,7 @@ export function AiChatbot() {
   };
 
   return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 20, alignItems: 'start' }}>
     <div className="chatbot-demo">
       <div className="cb-frame">
         <div className="cb-top">
@@ -115,6 +124,8 @@ export function AiChatbot() {
         Try the quick replies or type an order query — Astra answers with live data and escalates to a human when
         needed.
       </p>
+    </div>
+    <CustomerTestPanel />
     </div>
   );
 }

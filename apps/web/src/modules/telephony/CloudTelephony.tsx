@@ -10,6 +10,7 @@ import {
 } from '../../lib/api/hooks';
 import { ErrorState, LoadingState } from '../../components/states';
 import { useToast } from '../../components/Toast';
+import { downloadCsv } from '../../lib/csv';
 
 /**
  * Cloud Telephony — exact port of the prototype's #telephony section
@@ -375,6 +376,16 @@ function CdrTab() {
   if (cdr.isLoading) return <LoadingState />;
   if (cdr.error || !cdr.data) return <ErrorState error={cdr.error} retry={() => void cdr.refetch()} />;
 
+  function exportCsv() {
+    if (!cdr.data) return;
+    downloadCsv(
+      `call-records-${new Date().toISOString().slice(0, 10)}.csv`,
+      ['Time', 'Direction', 'From', 'To', 'Agent', 'Duration (s)', 'Disposition'],
+      cdr.data.map((c) => [c.createdAt, c.direction, c.fromNum, c.toNum, c.agentName, c.durationS, c.disposition]),
+    );
+    toast('Call records exported ✓');
+  }
+
   return (
     <div className="tel-panel on">
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
@@ -384,7 +395,7 @@ function CdrTab() {
             Every call leg logged — with disposition and the agent who took it
           </div>
         </div>
-        <button className="btn btn-o" style={{ marginLeft: 'auto' }} onClick={() => toast('Exporting CDRs as CSV…')}>
+        <button className="btn btn-o" style={{ marginLeft: 'auto' }} onClick={exportCsv} disabled={!cdr.data.length}>
           Export
         </button>
       </div>

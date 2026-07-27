@@ -19,10 +19,13 @@ export class TenantMiddleware implements NestMiddleware {
     // Channel webhooks (Guide §13) come from Meta, not a browser — there's no
     // subdomain/x-tenant to resolve from. Those routes resolve their own
     // tenant from the channel's identity (e.g. WhatsApp's phone_number_id).
+    // /tenants (workspace picker + admin CRUD) is deliberately cross-tenant —
+    // it manages the tenant list itself, so it must work before any tenant is
+    // known (e.g. the login screen's workspace dropdown).
     // req.path is relative to Nest's internal router mount (always "/" here,
     // regardless of the real endpoint) — req.originalUrl preserves the full
     // requested path, which is what we actually need to match on.
-    if (req.originalUrl.includes('/webhooks/')) {
+    if (req.originalUrl.includes('/webhooks/') || req.originalUrl.includes('/tenants')) {
       return next();
     }
 

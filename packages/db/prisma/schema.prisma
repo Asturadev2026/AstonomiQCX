@@ -25,9 +25,6 @@ model Tenant {
   dataRegion String   @default("ap-south-1") @map("data_region")
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  aiPersonaTone        String @default("friendly") @map("ai_persona_tone")
-  aiPersonaDescription String @default("") @map("ai_persona_description") @db.Text
-
   roles           Role[]
   departments     Department[]
   teams           Team[]
@@ -244,6 +241,7 @@ model Message {
   senderId       String?      @map("sender_id") @db.Uuid
   body           String?
   mediaUrl       String?      @map("media_url")
+  sources        String[]     @default([]) // KB article titles the bot grounded this reply in (bot messages only)
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([conversationId, createdAt])
@@ -382,6 +380,7 @@ model KbArticle {
   status    String   @default("published")
   version   Int      @default(1)
   views     Int      @default(0) // UI: KB card view count
+  citedCount Int     @default(0) @map("cited_count") // how many bot replies were grounded in this article
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 

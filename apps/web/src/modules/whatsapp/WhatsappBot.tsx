@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAskAstra } from '../../lib/api/hooks';
 import { useToast } from '../../components/Toast';
+import { useTestContact } from '../../state/testContact';
+import { CustomerTestPanel } from '../../components/CustomerTestPanel';
 
 /**
  * WhatsApp Bot — exact port of the prototype's #whatsapp section (markup and
@@ -37,9 +39,18 @@ export function WhatsappBot() {
   ]);
   const [showFlow, setShowFlow] = useState(true);
   const [input, setInput] = useState('');
+  const { contact } = useTestContact();
   const ask = useAskAstra();
   const toast = useToast();
   const bodyRef = useRef<HTMLDivElement>(null);
+
+  // Reset the conversation whenever the Topbar's "test as customer" selection changes.
+  useEffect(() => {
+    setShowFlow(true);
+    setMessages([
+      { dir: 'in', text: 'Namaste 👋 Welcome to ShopNova on WhatsApp! Reply with a number:', time: nowLabel() },
+    ]);
+  }, [contact?.id]);
 
   useEffect(() => {
     if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
@@ -53,7 +64,7 @@ export function WhatsappBot() {
     setShowFlow(false);
 
     ask.mutate(
-      { question: msg },
+      { question: msg, contactId: contact?.id },
       {
         onSuccess: (res) => {
           const reply = !res.configured
@@ -126,6 +137,8 @@ export function WhatsappBot() {
         </div>
       </div>
 
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <CustomerTestPanel />
       <div className="card">
         <h3>Why WhatsApp first?</h3>
         <div className="cap">Built for the Indian market</div>
@@ -160,6 +173,7 @@ export function WhatsappBot() {
           Astra handles tracking, refunds and returns end-to-end using WhatsApp Flows, and hands off to a human with
           full context when the customer types <b style={{ color: 'var(--text)' }}>3</b>.
         </div>
+      </div>
       </div>
     </div>
   );

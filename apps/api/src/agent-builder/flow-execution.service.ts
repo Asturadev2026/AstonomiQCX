@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { getPrisma, withTenant, type Order } from '@aq/db';
-import type { AgentFlowDefinition, AstraAnswerDto } from '@aq/shared';
-import { AiPersonaService } from '../ai-persona/ai-persona.service';
+import type { AgentFlowDefinition, AstraAnswerDto, FlowNode } from '@aq/shared';
 import { KbService } from '../kb/kb.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { isConfigured, llmComplete, LlmAuthError } from '../ai/llm';
@@ -36,7 +35,6 @@ export class FlowExecutionService {
     private flows: AgentFlowService,
     private kb: KbService,
     private tickets: TicketsService,
-    private persona: AiPersonaService,
   ) {}
 
   async run(tenantId: string, question: string, options: RunOptions = {}): Promise<AstraAnswerDto> {
@@ -54,8 +52,16 @@ export class FlowExecutionService {
     const language = options.language ?? 'en';
     const ctx: ExecContext = {};
 
+    // Walk via each node's `nextId` override when set, falling through to the
+    // next array element otherwise (the array order the Agent Builder canvas
+    // shows). `nextId` is user-editable ("on success, go to"), so a capped
+    // step count guards against a cycle someone wires up by mistake.
+    const byId = new Map(definition.nodes.map((n) => [n.id, n]));
+    let node: FlowNode | undefined = definition.nodes[0];
+    let steps = 0;
+
     try {
-      for (const node of definition.nodes) {
+      while (node && steps++ < definition.nodes.length * 2) {
         switch (node.type) {
           case 'trigger':
             break; // entry point only
@@ -103,11 +109,9 @@ export class FlowExecutionService {
               ? `Their most recent order: ${ctx.order.extRef ?? ctx.order.id}, "${ctx.order.description ?? 'item'}", ` +
                 `status: ${ctx.order.status ?? 'unknown'}, amount: ₹${ctx.order.amount ?? '?'}.\n\n`
               : '';
-            const persona = await this.persona.get(tenantId);
-            const personaInstruction = this.persona.buildInstruction(persona);
             const styleInstruction = options.channel === 'voice' ? `${VOICE_STYLE_INSTRUCTION} ` : '';
             const prompt =
-              `You are Astra, the support assistant. ${personaInstruction ? `${personaInstruction} ` : ''}${styleInstruction}The customer's detected intent is ` +
+              `You are Astra, the support assistant. ${styleInstruction}The customer's detected intent is ` +
               `"${ctx.intent ?? 'other'}". ${orderLine}Answer the customer ONLY using the knowledge base context ` +
               `below (and the order details above if relevant). Reply in ${language}. If the answer is not in the ` +
               `context, or the issue needs a human (like a refund or complaint), reply with exactly the word ` +
@@ -130,6 +134,10 @@ export class FlowExecutionService {
               ticketRef = ticket.extRef;
             }
 
+            if (!escalate && articles.length > 0) {
+              await this.kb.recordCitations(tenantId, articles.map((a) => a.id));
+            }
+
             return {
               answer: escalate ? null : answer,
               escalate,
@@ -142,6 +150,9 @@ export class FlowExecutionService {
           case 'human_handoff':
             break; // escalation itself already happened in send_reply
         }
+
+        const idx = definition.nodes.indexOf(node);
+        node = node.nextId ? byId.get(node.nextId) : definition.nodes[idx + 1];
       }
 
       // Flow had no send_reply node — nothing to say.
