@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(PGPASSWORD=aq node -e \"console.log\\('test'\\)\")",
+      "PowerShell($env:DATABASE_URL = \"postgresql://aq:aq@localhost:5433/astronomiq?schema=public\"; Set-Location \"C:\\\\Users\\\\RATHO\\\\Downloads\\\\astronomiq-cx\\\\packages\\\\db\"; corepack pnpm exec tsx \"C:\\\\Users\\\\RATHO\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-RATHO-Downloads-astronomiq-cx\\\\240086a8-6fd2-4223-9e7b-3a7b3c974630\\\\scratchpad\\\\check-state.ts\" 2>&1)",
+      "PowerShell($env:DATABASE_URL = \"postgresql://aq:aq@localhost:5433/astronomiq?schema=public\"; Set-Location \"C:\\\\Users\\\\RATHO\\\\Downloads\\\\astronomiq-cx\\\\packages\\\\db\"; corepack pnpm exec tsx \"C:\\\\Users\\\\RATHO\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-RATHO-Downloads-astronomiq-cx\\\\240086a8-6fd2-4223-9e7b-3a7b3c974630\\\\scratchpad\\\\reset-tenant.ts\" 2>&1)",
+      "PowerShell($env:DATABASE_URL = \"postgresql://aq:aq@localhost:5433/astronomiq?schema=public\"; Set-Location \"C:\\\\Users\\\\RATHO\\\\Downloads\\\\astronomiq-cx\\\\packages\\\\db\"; corepack pnpm run seed 2>&1 | Select-Object -Last 30)",
+      "PowerShell($env:DATABASE_URL = \"postgresql://aq:aq@localhost:5433/astronomiq?schema=public\"; Set-Location \"C:\\\\Users\\\\RATHO\\\\Downloads\\\\astronomiq-cx\"; corepack pnpm --filter @aq/api dev)",
+      "Bash(node screenshot-portal.js)",
+      "PowerShell($env:DATABASE_URL = \"postgresql://aq:aq@localhost:5433/astronomiq?schema=public\"; Set-Location \"C:\\\\Users\\\\RATHO\\\\Downloads\\\\astronomiq-cx\\\\packages\\\\db\"; corepack pnpm exec tsx \"C:\\\\Users\\\\RATHO\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-RATHO-Downloads-astronomiq-cx\\\\240086a8-6fd2-4223-9e7b-3a7b3c974630\\\\scratchpad\\\\reset-tenant.ts\" 2>&1; corepack pnpm run seed 2>&1 | Select-Object -Last 40)",
+      "Bash(curl -s -o /dev/null -w \"api:%{http_code}\\\\n\" http://localhost:4000/health)",
+      "Bash(curl -s -o /dev/null -w \"web:%{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(curl -s http://localhost:4000/api/v1/qa/summary)",
+      "Bash(curl -s http://localhost:4000/api/v1/analytics/detail)",
+      "PowerShell($env:DATABASE_URL = \"postgresql://aq:aq@localhost:5433/astronomiq?schema=public\"; Set-Location \"C:\\\\Users\\\\RATHO\\\\Downloads\\\\astronomiq-cx\\\\packages\\\\db\"; corepack pnpm exec tsx \"C:\\\\Users\\\\RATHO\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-RATHO-Downloads-astronomiq-cx\\\\240086a8-6fd2-4223-9e7b-3a7b3c974630\\\\scratchpad\\\\reset-tenant.ts\" 2>&1; corepack pnpm run seed 2>&1 | Select-Object -Last 20)",
+      "Bash(node -e ' *)",
+      "Bash(node screenshot-qa-analytics.js)",
+      "Bash(git branch *)",
+      "Skill(run)",
+      "Skill(run:*)",
+      "Bash(docker info *)",
+      "Bash(docker --version)",
+      "Bash(node drive2.mjs)",
+      "Bash(node drive3.mjs)",
+      "Bash(node drive4.mjs)",
+      "Bash(tasklist //FI \"IMAGENAME eq node.exe\")",
+      "Bash(export DATABASE_URL=\"postgresql://aq:aq@localhost:5433/astronomiq?schema=public\")",
+      "Bash(export DIRECT_URL=\"postgresql://aq:aq@localhost:5433/astronomiq?schema=public\")",
+      "Bash(npx prisma *)",
+      "Bash(git merge *)",
+      "Bash(echo \"---EXIT $?---\")",
+      "Bash(npm run *)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(curl -s -H \"x-tenant: shopnova\" http://localhost:4000/api/v1/field-service/kpis)",
+      "Bash(curl -s -H \"x-tenant: shopnova\" http://localhost:4000/api/v1/field-service/visits)",
+      "Bash(node drive5.mjs)",
+      "Bash(curl -s -o /dev/null -w \"api:4000 -> %{http_code}\\\\n\" -H \"x-tenant: shopnova\" http://localhost:4000/api/v1/tickets)",
+      "Bash(node drive6.mjs)"
+    ]
+  }
+}

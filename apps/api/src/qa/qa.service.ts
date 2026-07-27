@@ -8,6 +8,7 @@ export interface QaKpis {
   flaggedCount: number;
 }
 export interface QaAuditRow {
+  id: string;
   agentLabel: string;
   customerName: string;
   score: number;
@@ -15,6 +16,8 @@ export interface QaAuditRow {
   category: string;
   empathy: string;
   resolution: string;
+  flagged: boolean;
+  createdAt: string;
 }
 export interface LeaderboardEntry {
   rank: number;
@@ -88,7 +91,7 @@ export class QaService {
         tx.survey.findMany({ where: { type: 'csat' }, select: { score: true, createdAt: true } }),
         tx.qaAudit.findMany({
           orderBy: { createdAt: 'desc' },
-          take: 5,
+          take: 20,
           include: { agentUser: { select: { name: true } }, contact: { select: { name: true } } },
         }),
         tx.user.findMany({ where: { title: { not: 'Team Lead' } } }),
@@ -110,6 +113,7 @@ export class QaService {
         const breakdown = (r.breakdown ?? {}) as { category?: string; empathy?: string; resolution?: string; channel?: string };
         const agentLabel = r.agentUser?.name ?? `Astra AI · ${CHANNEL_LABELS[breakdown.channel ?? ''] ?? 'Bot'}`;
         return {
+          id: r.id,
           agentLabel,
           customerName: r.contact?.name ?? 'Unknown customer',
           score: r.score ?? 0,
@@ -117,6 +121,8 @@ export class QaService {
           category: breakdown.category ?? 'General',
           empathy: breakdown.empathy ?? '—',
           resolution: breakdown.resolution ?? '—',
+          flagged: r.flagged,
+          createdAt: r.createdAt.toISOString(),
         };
       });
 
