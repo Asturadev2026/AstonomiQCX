@@ -23,6 +23,8 @@ export interface FlowNode {
   title: string;
   subtitle: string;
   config: FlowNodeConfig;
+  /** Branching override: jump to this node id after this one instead of the next array element. Unset = fall through in order. */
+  nextId?: string | null;
 }
 
 export interface AgentFlowDefinition {
@@ -39,4 +41,20 @@ export interface AgentFlowDto {
 
 export interface UpdateFlowNodeDto {
   config: FlowNodeConfig;
+}
+
+export interface AddFlowNodeDto {
+  type: FlowNodeType;
+  /** Insert right after this node id, or at the very front when null. */
+  afterNodeId: string | null;
+}
+
+export interface MoveFlowNodeDto {
+  /** Move the node to right after this node id, or to the very front when null. */
+  afterNodeId: string | null;
+}
+
+export interface SetNextNodeDto {
+  /** The node id to jump to after this one, or null to clear the override (fall through in order). */
+  nextId: string | null;
 }

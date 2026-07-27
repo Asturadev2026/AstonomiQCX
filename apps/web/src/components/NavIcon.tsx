@@ -44,6 +44,8 @@ const ICONS: Record<string, string> = {
     '<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 8h18M8 21h8"/>',
   qa: '<path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/>',
   analytics: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  tenants:
+    '<rect x="4" y="10" width="6" height="10" rx="1"/><rect x="14" y="6" width="6" height="14" rx="1"/><path d="M2 20h20"/>',
   audit:
     '<path d="M9 12l2 2 4-4"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/><path d="M15 3v4h4"/>',
   billing:

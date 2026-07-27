@@ -19,6 +19,8 @@ export interface ThreadMessage {
   role: 'cust' | 'bot' | 'agent';
   text: string;
   time: string;
+  /** KB article titles the bot grounded this reply in — bot messages only. */
+  sources?: string[];
 }
 
 export interface ConversationThread {
@@ -213,6 +215,7 @@ export class ConversationsService {
           role: SENDER_ROLE[m.senderType] ?? 'agent',
           text: m.body ?? '',
           time: clockTime(m.createdAt),
+          sources: m.sources.length > 0 ? m.sources : undefined,
         })),
         copilot: {
           sentiment: conv.sentiment as ConversationThread['copilot']['sentiment'],

@@ -305,6 +305,128 @@ const DEFAULT_SLA_POLICIES = [
   { priority: 'p4', name: 'P4 — Low', firstResponseMins: 120, resolutionMins: 1440 },
 ];
 
+// Team & Settings — teams the AGENT_USERS below belong to.
+const DEFAULT_TEAMS = ['CX Ops', 'BFSI', 'Retail', 'Travel'];
+
+// Role + team per AGENT_USERS entry, by index — Kavya (lead) runs CX Ops, Aditya is
+// BFSI's Admin, the rest are Agents split across Retail/Travel (Guide's Team & Settings view).
+const AGENT_ROLE_TEAM: { role: string; team: string }[] = [
+  { role: 'TeamLead', team: 'CX Ops' },
+  { role: 'Admin', team: 'BFSI' },
+  { role: 'Agent', team: 'Retail' },
+  { role: 'Agent', team: 'Travel' },
+  { role: 'Agent', team: 'Retail' },
+];
+
+// Billing & Plans — plan catalog (Plan is global, not tenant-scoped). Enterprise has no
+// fixed price; priceInr 0 is the "Custom" sentinel the billing service formats specially.
+const DEFAULT_PLANS = [
+  {
+    name: 'Growth',
+    priceInr: 49_000,
+    features: ['Up to 15 agents', 'WhatsApp + Chat + Email', 'AI chatbot & co-pilot', 'Basic SLA & reports'],
+  },
+  {
+    name: 'Business',
+    priceInr: 120_000,
+    features: ['Up to 50 agents', 'All channels + Voice AI', 'SLA, escalation & Auto-QA', 'Departments & WFM', 'Conversation Hub'],
+  },
+  {
+    name: 'Enterprise',
+    priceInr: 0,
+    features: ['Unlimited agents', 'Field service & journey', 'SSO, audit & data residency', 'Dedicated success manager', 'Custom integrations'],
+  },
+];
+
+// Connected channels & integrations grid (Settings view) — Channel rows already power real
+// webhook routing (WhatsappService.tenantForPhoneNumberId); the non-comms integrations
+// (Shopify/Razorpay/Salesforce) reuse the same generic type/status shape.
+const DEFAULT_CHANNELS = ['whatsapp', 'instagram', 'email', 'voice', 'shopify', 'razorpay', 'salesforce'];
+
+const DEFAULT_TOGGLES = {
+  autoResolve: true,
+  hindiSupport: true,
+  sentimentRouting: true,
+  autoQa: true,
+  afterHoursVoice: false,
+};
+
+// Departments — reuses the exact department names automations/default-rules.ts already
+// references via assignDept ('Escalations Desk', 'Payments & Refunds', 'Technical Support'),
+// plus two more to round out the org. Each gets a directory-only head + 2 execs (no Keycloak
+// login — same treatment as AGENT_USERS) so Departments' cards aren't sparse.
+const DEPARTMENTS = [
+  {
+    name: 'Escalations Desk',
+    icon: '🚨',
+    color: '#DC2626',
+    head: { name: 'Ritika Shah', email: 'ritika.shah@shopnova.in', avatarColor: '#DC2626', title: 'Department Head · Escalations' },
+    execs: [
+      { name: 'Devansh Oberoi', email: 'devansh.oberoi@shopnova.in', avatarColor: '#DB2777' },
+      { name: 'Ishita Kulkarni', email: 'ishita.kulkarni@shopnova.in', avatarColor: '#94A3B8' },
+    ],
+  },
+  {
+    name: 'Payments & Refunds',
+    icon: '💳',
+    color: '#2563EB',
+    head: { name: 'Nikhil Reddy', email: 'nikhil.reddy@shopnova.in', avatarColor: '#2563EB', title: 'Department Head · Payments & Refunds' },
+    execs: [
+      { name: 'Simran Kaur', email: 'simran.kaur@shopnova.in', avatarColor: '#0EA5E9' },
+      { name: 'Rajat Mehra', email: 'rajat.mehra@shopnova.in', avatarColor: '#4F46E5' },
+    ],
+  },
+  {
+    name: 'Technical Support',
+    icon: '🛠️',
+    color: '#4F46E5',
+    head: { name: 'Ananya Krishnan', email: 'ananya.krishnan@shopnova.in', avatarColor: '#4F46E5', title: 'Department Head · Technical Support' },
+    execs: [
+      { name: 'Yash Thakur', email: 'yash.thakur@shopnova.in', avatarColor: '#16A34A' },
+      { name: 'Pallavi Menon', email: 'pallavi.menon@shopnova.in', avatarColor: '#E08A00' },
+    ],
+  },
+  {
+    name: 'Logistics',
+    icon: '🚚',
+    color: '#E08A00',
+    head: { name: 'Suresh Iyer', email: 'suresh.iyer@shopnova.in', avatarColor: '#E08A00', title: 'Department Head · Logistics' },
+    execs: [
+      { name: 'Bhavna Chauhan', email: 'bhavna.chauhan@shopnova.in', avatarColor: '#DB2777' },
+      { name: 'Karthik Subramaniam', email: 'karthik.subramaniam@shopnova.in', avatarColor: '#2563EB' },
+    ],
+  },
+  {
+    name: 'Customer Success',
+    icon: '🤝',
+    color: '#16A34A',
+    head: { name: 'Tanvi Bhatt', email: 'tanvi.bhatt@shopnova.in', avatarColor: '#16A34A', title: 'Department Head · Customer Success' },
+    execs: [
+      { name: 'Arnav Saxena', email: 'arnav.saxena@shopnova.in', avatarColor: '#0EA5E9' },
+      { name: 'Gauri Deshmukh', email: 'gauri.deshmukh@shopnova.in', avatarColor: '#94A3B8' },
+    ],
+  },
+];
+
+// Cloud Telephony — virtual numbers grid (Guide §13.4). Static reference data, no
+// freshness concern (unlike Calls below, which are date-scoped).
+const NUMBER_DIDS = [
+  { number: '1800-266-0000', type: 'toll-free', mappedTo: 'IVR — Main queue', status: 'active' },
+  { number: '080-4718-0000', type: 'support', mappedTo: 'IVR — Main queue', status: 'active' },
+  { number: '080-4718-0001', type: 'masking', mappedTo: 'Delivery masking bridge', status: 'active' },
+  { number: '080-4718-0002', type: 'sales', mappedTo: 'Outbound dialer — Win-back campaign', status: 'active' },
+];
+
+// Call dispositions cycled across seeded calls — same options as the prototype's
+// live-console wrap-up dropdown (Guide §13.3).
+const CALL_DISPOSITIONS = ['Query resolved', 'Escalated to senior', 'Callback scheduled', 'Refund initiated', 'Complaint — ticket raised'];
+
+// Field Service — technician is a free-text field (no User FK), so these are just names,
+// not directory users. Kind/status pools mirror ServiceVisit's documented enum values.
+const FIELD_TECHNICIANS = ['Ramesh Yadav', 'Manoj Tiwari', 'Ravi Kumar', 'Suresh Iyer'];
+const FIELD_VISIT_KINDS = ['installation', 'repair', 'pickup'];
+const FIELD_VISIT_STATUSES = ['completed', 'completed', 'in_progress', 'en_route', 'scheduled', 'scheduled', 'scheduled'];
+
 async function main() {
   const prisma = getPrisma();
   const tenant = await prisma.tenant.upsert({
@@ -314,16 +436,29 @@ async function main() {
   });
   console.log(`Seeded tenant: ${tenant.name} (${tenant.id})`);
 
+  const roleByName = new Map<string, string>();
+  for (const role of DEFAULT_ROLES) {
+    const row = await prisma.role.upsert({
+      where: { tenantId_name: { tenantId: tenant.id, name: role.name } },
+      update: { permissions: role.permissions },
+      create: { tenantId: tenant.id, name: role.name, permissions: role.permissions },
+    });
+    roleByName.set(role.name, row.id);
+  }
+  console.log(`Seeded ${DEFAULT_ROLES.length} default roles.`);
+
+  // Runs unconditionally (unlike the ticket-guarded block below) so teams exist before
+  // AGENT_USERS are created on a fresh DB, and so the backfill near the end of this
+  // script has something to backfill existing agent users' roleId/teamId against.
+  const teamByName = new Map<string, string>();
   await withTenant(prisma, tenant.id, async (tx) => {
-    for (const role of DEFAULT_ROLES) {
-      await tx.role.upsert({
-        where: { tenantId_name: { tenantId: tenant.id, name: role.name } },
-        update: { permissions: role.permissions },
-        create: { tenantId: tenant.id, name: role.name, permissions: role.permissions },
-      });
+    for (const name of DEFAULT_TEAMS) {
+      const existing = await tx.team.findFirst({ where: { tenantId: tenant.id, name } });
+      const team = existing ?? (await tx.team.create({ data: { tenantId: tenant.id, name } }));
+      teamByName.set(name, team.id);
     }
   });
-  console.log(`Seeded ${DEFAULT_ROLES.length} default roles.`);
+  console.log(`Seeded ${DEFAULT_TEAMS.length} teams.`);
 
   await withTenant(prisma, tenant.id, async (tx) => {
     for (const policy of DEFAULT_SLA_POLICIES) {
@@ -406,7 +541,17 @@ async function main() {
     // (moved up from after the ticket loop). The lead (index 0) is excluded from
     // the assignment rotation.
     const agentUsers = await Promise.all(
-      AGENT_USERS.map((u) => tx.user.create({ data: { tenantId: tenant.id, ...u } })),
+      AGENT_USERS.map((u, i) => {
+        const assign = AGENT_ROLE_TEAM[i];
+        return tx.user.create({
+          data: {
+            tenantId: tenant.id,
+            ...u,
+            roleId: assign ? roleByName.get(assign.role) : undefined,
+            teamId: assign ? teamByName.get(assign.team) : undefined,
+          },
+        });
+      }),
     );
     const rotationAgents = agentUsers.slice(1);
 
@@ -673,6 +818,7 @@ async function main() {
     console.log(`Refreshed ${allUsers.length} agent status rows.`);
 
     const since48h = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
     // Gated on OPEN conversations specifically, not total volume — the 14-day historical
     // batch above resolves almost everything by design (it feeds Analytics/QA "resolved"
     // metrics), so Omni Inbox (which only lists non-resolved threads) would otherwise be
@@ -680,11 +826,18 @@ async function main() {
     const freshOpenCount = await tx.conversation.count({
       where: { createdAt: { gte: since48h }, status: { not: 'resolved' } },
     });
+    // ALSO gated on last-24h volume (any status) — Command Centre's "conversations today"
+    // reads a strict last-24h window (analytics.service.ts), which is narrower than the
+    // 48h-open check above: once ~24h pass since this last ran, every fixed timestamp this
+    // batch wrote (originally spread 0-47h ago) has aged past "today" even while several are
+    // still within 48h and open, so freshOpenCount alone can stay "fresh" while today's count
+    // silently drops to zero.
+    const freshTodayCount = await tx.conversation.count({ where: { createdAt: { gte: since24h } } });
     let freshTickets: { id: string; resolved: boolean; assignedUserId: string | null; createdAt: Date }[] = [];
     let escalationTargets: typeof freshTickets = [];
     let freshConvCount = 0;
 
-    if (freshOpenCount >= 15) {
+    if (freshOpenCount >= 15 && freshTodayCount >= 15) {
       console.log('Rolling conversation window already fresh — skipping fresh conversations.');
     } else {
     const FRESH_TOTAL = 70;
@@ -880,6 +1033,7 @@ async function main() {
     }
   });
 
+<<<<<<< HEAD
   // A second, lightweight tenant — a different demo business to switch into at
   // login or via the Tenants admin page. Deliberately sparse (no KB articles,
   // tickets, or agent flow) so it reads as a distinct, mostly-empty workspace
@@ -934,6 +1088,235 @@ async function main() {
       }
     }
     console.log('Seeded 6 Northwind contacts.');
+=======
+  // Billing & Plans + Team & Settings. Plan is global (not tenant-scoped); everything
+  // else is guarded independently so a later run only tops up whatever's missing.
+  for (const p of DEFAULT_PLANS) {
+    await prisma.plan.upsert({
+      where: { name: p.name },
+      update: { priceInr: p.priceInr, features: p.features },
+      create: { name: p.name, priceInr: p.priceInr, features: p.features },
+    });
+  }
+  console.log(`Seeded ${DEFAULT_PLANS.length} plans.`);
+
+  await withTenant(prisma, tenant.id, async (tx) => {
+    // Backfill role/team on agent users seeded by an older run of this script — the
+    // ticket-guarded block above only assigns these on a fresh AGENT_USERS creation.
+    const agentEmails = AGENT_USERS.map((u) => u.email);
+    const assignmentByEmail = new Map(AGENT_USERS.map((u, i) => [u.email, AGENT_ROLE_TEAM[i]!]));
+    const unassigned = await tx.user.findMany({ where: { email: { in: agentEmails }, roleId: null } });
+    for (const u of unassigned) {
+      const assign = assignmentByEmail.get(u.email);
+      if (!assign) continue;
+      await tx.user.update({
+        where: { id: u.id },
+        data: { roleId: roleByName.get(assign.role), teamId: teamByName.get(assign.team) },
+      });
+    }
+    if (unassigned.length) console.log(`Backfilled role/team on ${unassigned.length} existing agent users.`);
+
+    const existingSub = await tx.subscription.findFirst({ where: { tenantId: tenant.id } });
+    if (existingSub) {
+      console.log('Subscription already seeded — skipping.');
+    } else {
+      const seatCount = await tx.user.count();
+      // Built via Date.UTC — a local setHours(0,0,0,0) can land on the wrong side of
+      // midnight UTC (e.g. IST), which a `@db.Date` column then stores as the prior day.
+      const now = new Date();
+      const cycleStart = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
+      const cycleEnd = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 0));
+      await tx.subscription.create({
+        data: { tenantId: tenant.id, plan: tenant.plan, seats: Math.max(seatCount, 50), cycleStart, cycleEnd },
+      });
+      console.log('Seeded active subscription.');
+    }
+
+    const invoiceCount = await tx.invoice.count();
+    if (invoiceCount > 0) {
+      console.log('Invoices already seeded — skipping.');
+    } else {
+      // This cycle (due) + 3 prior cycles (paid) — dated relative to "now" like the
+      // rolling conversation window above, so the invoice list doesn't go stale.
+      const AMOUNTS = [172_400, 168_900, 155_200, 149_800];
+      const invoiceNow = new Date();
+      const invoices = AMOUNTS.map((amount, i) => {
+        // Date.UTC — see the subscription cycle comment above for why.
+        const periodStart = new Date(Date.UTC(invoiceNow.getFullYear(), invoiceNow.getMonth() - i, 1));
+        const periodEnd = new Date(Date.UTC(invoiceNow.getFullYear(), invoiceNow.getMonth() - i + 1, 0));
+        return {
+          tenantId: tenant.id,
+          extRef: `INV-${periodStart.getUTCFullYear()}-${String(periodStart.getUTCMonth() + 1).padStart(2, '0')}`,
+          periodStart,
+          periodEnd,
+          amount,
+          status: i === 0 ? 'due' : 'paid',
+          createdAt: i === 0 ? new Date() : periodEnd,
+        };
+      });
+      await tx.invoice.createMany({ data: invoices });
+      console.log(`Seeded ${invoices.length} invoices.`);
+    }
+
+    const channelCount = await tx.channel.count();
+    if (channelCount > 0) {
+      console.log('Channels already seeded — skipping.');
+    } else {
+      await tx.channel.createMany({
+        data: DEFAULT_CHANNELS.map((type) => ({ tenantId: tenant.id, type, config: {}, status: 'connected' })),
+      });
+      console.log(`Seeded ${DEFAULT_CHANNELS.length} channels.`);
+    }
+
+    await tx.tenantSettings.upsert({
+      where: { tenantId: tenant.id },
+      update: {},
+      create: { tenantId: tenant.id, toggles: DEFAULT_TOGGLES },
+    });
+    console.log('Seeded tenant settings.');
+  });
+
+  // Departments, Workforce roster & Cloud Telephony/Contact Centre — these API modules
+  // shipped with nothing seeded behind them (0 rows in departments/service_visits/calls/
+  // numbers/shifts), leaving those pages permanently empty. Guarded independently, same
+  // philosophy as the blocks above.
+  await withTenant(prisma, tenant.id, async (tx) => {
+    const deptCount = await tx.department.count();
+    if (deptCount > 0) {
+      console.log('Departments already seeded — skipping.');
+    } else {
+      for (const d of DEPARTMENTS) {
+        const dept = await tx.department.create({ data: { tenantId: tenant.id, name: d.name, icon: d.icon, color: d.color } });
+        const headUser = await tx.user.create({
+          data: { tenantId: tenant.id, ...d.head, departmentId: dept.id, roleId: roleByName.get('Manager'), status: 'active' },
+        });
+        await tx.department.update({ where: { id: dept.id }, data: { headUserId: headUser.id } });
+        await tx.agentStatusRow.upsert({
+          where: { tenantId_userId: { tenantId: tenant.id, userId: headUser.id } },
+          update: {},
+          create: { tenantId: tenant.id, userId: headUser.id, status: 'available' },
+        });
+        for (const [i, e] of d.execs.entries()) {
+          const execUser = await tx.user.create({
+            data: { tenantId: tenant.id, ...e, departmentId: dept.id, roleId: roleByName.get('Agent'), status: 'active' },
+          });
+          await tx.agentStatusRow.upsert({
+            where: { tenantId_userId: { tenantId: tenant.id, userId: execUser.id } },
+            update: {},
+            create: { tenantId: tenant.id, userId: execUser.id, status: AGENT_STATUS_POOL[i % AGENT_STATUS_POOL.length]! },
+          });
+        }
+      }
+      console.log(`Seeded ${DEPARTMENTS.length} departments with heads & execs.`);
+
+      // Backfill department onto existing tickets — created before departments existed,
+      // so open-ticket counts on the cards above would otherwise all read zero.
+      const depts = await tx.department.findMany();
+      const undeptedTickets = await tx.ticket.findMany({ where: { departmentId: null }, select: { id: true } });
+      for (let i = 0; i < undeptedTickets.length; i++) {
+        await tx.ticket.update({ where: { id: undeptedTickets[i]!.id }, data: { departmentId: depts[i % depts.length]!.id } });
+      }
+      console.log(`Backfilled department on ${undeptedTickets.length} tickets.`);
+    }
+
+    const numberCount = await tx.numberDid.count();
+    if (numberCount > 0) {
+      console.log('Virtual numbers already seeded — skipping.');
+    } else {
+      await tx.numberDid.createMany({ data: NUMBER_DIDS.map((n) => ({ tenantId: tenant.id, ...n })) });
+      console.log(`Seeded ${NUMBER_DIDS.length} virtual numbers.`);
+    }
+
+    // Shifts are date-scoped to "today" (Workforce roster's adherence calc), so — like the
+    // rolling conversation window above — they go stale after real time passes and need
+    // re-seeding, not a one-time insert.
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayShiftCount = await tx.shift.count({ where: { startsAt: { gte: todayStart } } });
+    if (todayShiftCount > 0) {
+      console.log('Shifts already fresh for today — skipping.');
+    } else {
+      const rosterUsers = await tx.user.findMany({ where: { email: { in: AGENT_USERS.map((u) => u.email) } } });
+      const shifts = rosterUsers.map((u, i) => {
+        const startsAt = new Date(todayStart);
+        startsAt.setHours(i % 2 === 0 ? 9 : 14, 0, 0, 0);
+        const endsAt = new Date(startsAt.getTime() + 8 * 60 * 60 * 1000);
+        const lateMins = i === 2 ? 22 : randInt(0, 10); // one deliberately late, for a realistic adherence%
+        return {
+          tenantId: tenant.id,
+          userId: u.id,
+          name: i % 2 === 0 ? 'Morning' : 'Evening',
+          startsAt,
+          endsAt,
+          loginAt: new Date(startsAt.getTime() + lateMins * 60_000),
+        };
+      });
+      await tx.shift.createMany({ data: shifts });
+      console.log(`Seeded ${shifts.length} shifts for today.`);
+    }
+
+    // Service visits — also date-scoped to "today" (Field Service's kpis/list both filter
+    // on `slot`), so same rolling treatment as Shifts above.
+    const todayVisitCount = await tx.serviceVisit.count({ where: { slot: { gte: todayStart } } });
+    if (todayVisitCount > 0) {
+      console.log('Service visits already fresh for today — skipping.');
+    } else {
+      const visitContacts = await tx.contact.findMany({ where: { location: { not: null } }, select: { id: true, location: true }, take: 20 });
+      const VISIT_HOURS = [9, 10, 11, 13, 14, 15, 16, 17];
+      const visits = VISIT_HOURS.map((hour, i) => {
+        const slot = new Date(todayStart);
+        slot.setHours(hour, 0, 0, 0);
+        const contact = visitContacts[i % visitContacts.length];
+        return {
+          tenantId: tenant.id,
+          contactId: contact?.id,
+          kind: FIELD_VISIT_KINDS[i % FIELD_VISIT_KINDS.length],
+          address: contact?.location ? `H.No ${randInt(1, 199)}, ${contact.location}` : null,
+          slot,
+          technician: FIELD_TECHNICIANS[i % FIELD_TECHNICIANS.length],
+          status: FIELD_VISIT_STATUSES[i % FIELD_VISIT_STATUSES.length],
+        };
+      });
+      await tx.serviceVisit.createMany({ data: visits });
+      console.log(`Seeded ${visits.length} service visits for today.`);
+    }
+
+    // Calls — same rolling-48h-window treatment as conversations above (Contact Centre's
+    // abandon rate reads all-time, but Telephony's kpis() filters on calendar "today" —
+    // gated on both so callsToday doesn't silently drop to zero the way conversationsToday
+    // did (same class of bug, see the freshTodayCount comment above).
+    const since48h = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    const freshCallCount = await tx.call.count({ where: { createdAt: { gte: since48h } } });
+    const freshCallTodayCount = await tx.call.count({ where: { createdAt: { gte: todayStart } } });
+    if (freshCallCount >= 20 && freshCallTodayCount >= 5) {
+      console.log('Rolling call window already fresh — skipping fresh calls.');
+    } else {
+      const contacts = await tx.contact.findMany({ select: { id: true } });
+      const agents = await tx.user.findMany({ where: { email: { in: AGENT_USERS.map((u) => u.email) } } });
+      const CALL_TOTAL = 40;
+      const calls = Array.from({ length: CALL_TOTAL }, (_, i) => {
+        const createdAt = new Date(Date.now() - randInt(0, 47) * 60 * 60 * 1000 - randInt(0, 59) * 60_000);
+        const isAbandoned = i % 8 === 0;
+        const contact = contacts[i % contacts.length];
+        const agent = agents[i % agents.length];
+        return {
+          tenantId: tenant.id,
+          direction: i % 3 === 0 ? 'outbound' : 'inbound',
+          fromNum: `+9198765${String(10000 + i).slice(-5)}`,
+          toNum: '080-4718-0000',
+          virtualNum: '080-4718-0000',
+          agentId: isAbandoned ? null : agent?.id,
+          contactId: contact?.id,
+          status: isAbandoned ? 'abandoned' : 'completed',
+          durationS: isAbandoned ? randInt(5, 40) : randInt(60, 540),
+          disposition: isAbandoned ? 'Abandoned in queue' : CALL_DISPOSITIONS[i % CALL_DISPOSITIONS.length],
+          createdAt,
+        };
+      });
+      await tx.call.createMany({ data: calls });
+      console.log(`Seeded ${calls.length} fresh calls.`);
+    }
+>>>>>>> origin/main
   });
 }
 

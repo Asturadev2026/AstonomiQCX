@@ -1,7 +1,8 @@
-import { Body, Controller, Get, NotFoundException, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, NotFoundException, Param, Post, Query, Req } from '@nestjs/common';
 import type { TenantScopedRequest } from '../tenancy/tenant.middleware';
 import { ContactsService } from './contacts.service';
 import { CreateContactDto } from './create-contact.dto';
+import { AddContactOrderDto } from './add-contact-order.dto';
 
 @Controller('contacts')
 export class ContactsController {
@@ -12,7 +13,12 @@ export class ContactsController {
     return this.svc.create(req.tenantId, dto);
   }
 
-  // Declared before ':id' — otherwise Nest would match "latest" as an :id param.
+  // Declared before ':id' — otherwise Nest would match "latest"/a search hit as an :id param.
+  @Get()
+  search(@Req() req: TenantScopedRequest, @Query('q') q?: string) {
+    return this.svc.search(req.tenantId, q ?? '');
+  }
+
   @Get('latest')
   async latest(@Req() req: TenantScopedRequest) {
     const id = await this.svc.getLatestId(req.tenantId);
@@ -28,6 +34,11 @@ export class ContactsController {
   @Get(':id/orders')
   orders(@Req() req: TenantScopedRequest, @Param('id') id: string) {
     return this.svc.getOrders(req.tenantId, id);
+  }
+
+  @Post(':id/orders')
+  addOrder(@Req() req: TenantScopedRequest, @Param('id') id: string, @Body() dto: AddContactOrderDto) {
+    return this.svc.addOrder(req.tenantId, id, dto);
   }
 
   @Get(':id/tickets')

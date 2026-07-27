@@ -67,4 +67,12 @@ export class KbService {
       }),
     );
   }
+
+  /** Records that these articles grounded a real bot reply, for the KB screen's "cited" count. */
+  async recordCitations(tenantId: string, articleIds: string[]): Promise<void> {
+    if (articleIds.length === 0) return;
+    await withTenant(this.prisma, tenantId, (tx) =>
+      tx.kbArticle.updateMany({ where: { id: { in: articleIds } }, data: { citedCount: { increment: 1 } } }),
+    );
+  }
 }

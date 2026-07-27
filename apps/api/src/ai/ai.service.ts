@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { AstraAnswerDto } from '@aq/shared';
 import { AgentFlowService } from '../agent-builder/agent-flow.service';
 import { FlowExecutionService } from '../agent-builder/flow-execution.service';
-import { AiPersonaService } from '../ai-persona/ai-persona.service';
 import { KbService } from '../kb/kb.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { isConfigured, llmComplete, LlmAuthError } from './llm';
@@ -29,7 +28,6 @@ export class AiService {
     private tickets: TicketsService,
     private flows: AgentFlowService,
     private flowExecution: FlowExecutionService,
-    private persona: AiPersonaService,
   ) {}
 
   async ask(
@@ -50,11 +48,9 @@ export class AiService {
     const articles = await this.kb.searchByKeyword(tenantId, question);
     const context = articles.map((a) => `# ${a.title}\n${a.body}`).join('\n---\n');
 
-    const persona = await this.persona.get(tenantId);
-    const personaInstruction = this.persona.buildInstruction(persona);
     const styleInstruction = options.channel === 'voice' ? `${VOICE_STYLE_INSTRUCTION} ` : '';
     const prompt =
-      `You are Astra, the support assistant. ${personaInstruction ? `${personaInstruction} ` : ''}${styleInstruction}Answer the customer ONLY using the context below. ` +
+      `You are Astra, the support assistant. ${styleInstruction}Answer the customer ONLY using the context below. ` +
       `Reply in ${language}. If the answer is not in the context, or the issue needs a human ` +
       `(like a refund or complaint), reply with exactly the word ESCALATE.\n\n` +
       `Context:\n${context || '(no matching knowledge base articles)'}\n\nCustomer question: ${question}`;
@@ -77,6 +73,10 @@ export class AiService {
           conversationId: options.conversationId,
         });
         ticketRef = ticket.extRef;
+      }
+
+      if (!escalate && articles.length > 0) {
+        await this.kb.recordCitations(tenantId, articles.map((a) => a.id));
       }
 
       return {

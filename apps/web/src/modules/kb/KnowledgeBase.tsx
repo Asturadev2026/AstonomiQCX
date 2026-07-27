@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useCreateKbArticle, useIncrementKbView, useKbArticles } from '../../lib/api/hooks';
 import { ErrorState, LoadingState } from '../../components/states';
 import { useToast } from '../../components/Toast';
+import { Modal } from '../../components/Modal';
 import type { KbArticle } from '../../lib/api/types';
 
 /**
@@ -66,6 +67,7 @@ export function KnowledgeBase() {
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [category, setCategory] = useState('');
+  const [viewingArticleId, setViewingArticleId] = useState<string | null>(null);
 
   const categories = useMemo(() => {
     if (!data) return [];
@@ -84,8 +86,10 @@ export function KnowledgeBase() {
 
   function openArticle(article: KbArticle) {
     incrementView.mutate({ id: article.id });
-    toast(`Opening "${article.title}"…`);
+    setViewingArticleId(article.id);
   }
+
+  const viewingArticle = viewingArticleId ? data.find((a) => a.id === viewingArticleId) ?? null : null;
 
   function submitArticle() {
     if (!title.trim() || !body.trim()) {
@@ -230,6 +234,17 @@ export function KnowledgeBase() {
           </div>
         </div>
       </div>
+
+      {viewingArticle && (
+        <Modal title={viewingArticle.title} onClose={() => setViewingArticleId(null)}>
+          <div className="ka-m" style={{ marginBottom: 12 }}>
+            <span>📁 {viewingArticle.category ?? 'Uncategorised'}</span>
+            <span>👁 {formatViews(viewingArticle.views)}</span>
+            <span>🕒 {timeAgo(viewingArticle.updatedAt)}</span>
+          </div>
+          <div style={{ fontSize: 13.5, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{viewingArticle.body}</div>
+        </Modal>
+      )}
     </>
   );
 }

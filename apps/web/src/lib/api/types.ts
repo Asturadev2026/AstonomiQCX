@@ -192,6 +192,7 @@ export interface QaKpis {
   flaggedCount: number;
 }
 export interface QaAuditRow {
+  id: string;
   agentLabel: string;
   customerName: string;
   score: number;
@@ -199,6 +200,8 @@ export interface QaAuditRow {
   category: string;
   empathy: string;
   resolution: string;
+  flagged: boolean;
+  createdAt: string;
 }
 export interface LeaderboardEntry {
   rank: number;
@@ -462,3 +465,12 @@ export type { FieldServiceKpis, ServiceVisitDto } from '@aq/shared';
 
 // GET /api/v1/priority-matrix
 export type { PriorityLevelInfoDto, PriorityMatrixCellDto, PriorityMatrixDto } from '@aq/shared';
+
+// GET /api/v1/audit
+export type { AuditLogRow } from '@aq/shared';
+
+// GET /api/v1/billing/overview
+export type { BillingPayload, InvoiceRow, PlanCard, UsageMeter } from '@aq/shared';
+
+// GET /api/v1/settings, PATCH /api/v1/settings/toggles/:key, POST /api/v1/settings/invites
+export type { CreateInviteDto, IntegrationCard, InviteDto, SettingsPayload, SettingsToggles, TeamMemberRow } from '@aq/shared';

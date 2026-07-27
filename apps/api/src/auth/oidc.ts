@@ -38,6 +38,30 @@ export async function loadUser(tenantId: string, oidcSubject: string) {
 }
 
 /**
+ * Dev-only stand-in for a logged-in user (Guide §7 — no login flow wired into apps/web
+ * yet, same rationale as tenant.middleware.ts's DEV_TENANT_HEADER). Picks a real User
+ * row so writes still carry a genuine actor for audit logging/assignment; never
+ * called in production — JwtGuard gates that. Replace with real Keycloak login (Guide §7).
+ */
+export async function loadDevUser(tenantId: string) {
+  return withTenant(getPrisma(), tenantId, async (tx) => {
+    const user = await tx.user.findFirst({ where: { roleId: { not: null } }, orderBy: { name: 'asc' } });
+    if (!user) throw new Error('No user available for the dev auth stand-in');
+
+    const role = user.roleId ? await tx.role.findUnique({ where: { id: user.roleId } }) : null;
+
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      title: user.title,
+      departmentId: user.departmentId,
+      permissions: (role?.permissions as string[]) || [],
+    };
+  });
+}
+
+/**
  * Finds which company (tenant) a user belongs to — used by the live-updates
  * connection, where the tenant genuinely isn't known yet (that's the whole
  * point of this lookup). Can't go through withTenant() for that reason, and

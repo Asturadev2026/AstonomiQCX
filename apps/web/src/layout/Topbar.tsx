@@ -1,5 +1,6 @@
 import { useNavCounts, useSessionUser } from '../lib/api/hooks';
 import { useToast } from '../components/Toast';
+import { ContactPicker } from '../components/ContactPicker';
 
 export function Topbar({ title, sub }: { title: string; sub: string }) {
   const { data: counts } = useNavCounts();
@@ -20,6 +21,7 @@ export function Topbar({ title, sub }: { title: string; sub: string }) {
         </svg>
         <input placeholder="Search customers, orders, tickets…" />
       </div>
+      <ContactPicker />
       <button
         className="tb-icon"
         onClick={() =>

@@ -1,7 +1,15 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { getPrisma, withTenant, type AgentFlow } from '@aq/db';
-import type { AgentFlowDefinition, AgentFlowDto, FlowNodeConfig } from '@aq/shared';
+import type { AgentFlowDefinition, AgentFlowDto, FlowNode, FlowNodeConfig, FlowNodeType } from '@aq/shared';
 import { DEFAULT_FLOW_DEFINITION } from './default-flow';
+
+/** null = insert at the very front; otherwise right after the node with that id (falls back to the end if it's not found). */
+function insertionIndex(nodes: FlowNode[], afterNodeId: string | null): number {
+  if (afterNodeId === null) return 0;
+  const afterIndex = nodes.findIndex((n) => n.id === afterNodeId);
+  return afterIndex === -1 ? nodes.length : afterIndex + 1;
+}
 
 function toDto(flow: AgentFlow): AgentFlowDto {
   return {
@@ -12,6 +20,58 @@ function toDto(flow: AgentFlow): AgentFlowDto {
     definition: flow.definition as unknown as AgentFlowDefinition,
   };
 }
+
+/** Defaults for a freshly dragged-in block — mirrors the palette's icons/badges/labels. */
+const NODE_TEMPLATES: Record<FlowNodeType, Omit<FlowNode, 'id' | 'nextId'>> = {
+  trigger: {
+    type: 'trigger',
+    icon: '⚡',
+    badge: 'b-blue',
+    title: 'When customer messages',
+    subtitle: 'Trigger · any channel',
+    config: {},
+  },
+  detect_intent: {
+    type: 'detect_intent',
+    icon: '🧠',
+    badge: 'b-indigo',
+    title: 'Detect intent',
+    subtitle: 'classify the message',
+    config: { intents: ['other'] },
+  },
+  fetch_data: {
+    type: 'fetch_data',
+    icon: '🔗',
+    badge: 'b-sky',
+    title: 'Fetch order details',
+    subtitle: 'from Order Management API',
+    config: { source: 'latest_order' },
+  },
+  ask_question: {
+    type: 'ask_question',
+    icon: '❓',
+    badge: 'b-amber',
+    title: 'Ask a question',
+    subtitle: 'quick-reply buttons',
+    config: { question: '', options: [] },
+  },
+  send_reply: {
+    type: 'send_reply',
+    icon: '💬',
+    badge: 'b-green',
+    title: 'Send reply',
+    subtitle: 'personalised reply',
+    config: {},
+  },
+  human_handoff: {
+    type: 'human_handoff',
+    icon: '🙋',
+    badge: 'b-pink',
+    title: 'Human handoff',
+    subtitle: 'escalate to a human',
+    config: { condition: '' },
+  },
+};
 
 /** Real persistence for the Agent Builder's flow graph — Guide §1.3/§12. */
 @Injectable()
@@ -46,6 +106,84 @@ export class AgentFlowService {
       const node = definition.nodes.find((n) => n.id === nodeId);
       if (!node) throw new NotFoundException(`Node ${nodeId} not found in flow ${flowId}`);
       node.config = { ...node.config, ...config };
+
+      const updated = await tx.agentFlow.update({
+        where: { id: flowId },
+        data: { definition: definition as object },
+      });
+      return toDto(updated);
+    });
+  }
+
+  async addNode(tenantId: string, flowId: string, type: FlowNodeType, afterNodeId: string | null): Promise<AgentFlowDto> {
+    return withTenant(this.prisma, tenantId, async (tx) => {
+      const flow = await tx.agentFlow.findUnique({ where: { id: flowId } });
+      if (!flow) throw new NotFoundException(`Agent flow ${flowId} not found`);
+
+      const definition = flow.definition as unknown as AgentFlowDefinition;
+      const node: FlowNode = { ...NODE_TEMPLATES[type], id: randomUUID() };
+      definition.nodes.splice(insertionIndex(definition.nodes, afterNodeId), 0, node);
+
+      const updated = await tx.agentFlow.update({
+        where: { id: flowId },
+        data: { definition: definition as object },
+      });
+      return toDto(updated);
+    });
+  }
+
+  async deleteNode(tenantId: string, flowId: string, nodeId: string): Promise<AgentFlowDto> {
+    return withTenant(this.prisma, tenantId, async (tx) => {
+      const flow = await tx.agentFlow.findUnique({ where: { id: flowId } });
+      if (!flow) throw new NotFoundException(`Agent flow ${flowId} not found`);
+
+      const definition = flow.definition as unknown as AgentFlowDefinition;
+      if (definition.nodes.length <= 1) throw new BadRequestException('Cannot delete the only remaining node');
+      const index = definition.nodes.findIndex((n) => n.id === nodeId);
+      if (index === -1) throw new NotFoundException(`Node ${nodeId} not found in flow ${flowId}`);
+
+      definition.nodes.splice(index, 1);
+      for (const n of definition.nodes) {
+        if (n.nextId === nodeId) n.nextId = undefined;
+      }
+
+      const updated = await tx.agentFlow.update({
+        where: { id: flowId },
+        data: { definition: definition as object },
+      });
+      return toDto(updated);
+    });
+  }
+
+  async moveNode(tenantId: string, flowId: string, nodeId: string, afterNodeId: string | null): Promise<AgentFlowDto> {
+    return withTenant(this.prisma, tenantId, async (tx) => {
+      const flow = await tx.agentFlow.findUnique({ where: { id: flowId } });
+      if (!flow) throw new NotFoundException(`Agent flow ${flowId} not found`);
+
+      const definition = flow.definition as unknown as AgentFlowDefinition;
+      const fromIndex = definition.nodes.findIndex((n) => n.id === nodeId);
+      if (fromIndex === -1) throw new NotFoundException(`Node ${nodeId} not found in flow ${flowId}`);
+
+      const [node] = definition.nodes.splice(fromIndex, 1) as [FlowNode];
+      definition.nodes.splice(insertionIndex(definition.nodes, afterNodeId), 0, node);
+
+      const updated = await tx.agentFlow.update({
+        where: { id: flowId },
+        data: { definition: definition as object },
+      });
+      return toDto(updated);
+    });
+  }
+
+  async setNext(tenantId: string, flowId: string, nodeId: string, nextId: string | null): Promise<AgentFlowDto> {
+    return withTenant(this.prisma, tenantId, async (tx) => {
+      const flow = await tx.agentFlow.findUnique({ where: { id: flowId } });
+      if (!flow) throw new NotFoundException(`Agent flow ${flowId} not found`);
+
+      const definition = flow.definition as unknown as AgentFlowDefinition;
+      const node = definition.nodes.find((n) => n.id === nodeId);
+      if (!node) throw new NotFoundException(`Node ${nodeId} not found in flow ${flowId}`);
+      node.nextId = nextId ?? undefined;
 
       const updated = await tx.agentFlow.update({
         where: { id: flowId },

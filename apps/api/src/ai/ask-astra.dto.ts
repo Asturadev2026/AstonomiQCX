@@ -6,4 +6,5 @@ export class AskAstraDto implements AskAstraDtoShape {
   @IsString() question!: string;
   @IsOptional() @IsString() language?: string;
   @IsOptional() @IsIn(['chat', 'whatsapp', 'voice']) channel?: 'chat' | 'whatsapp' | 'voice';
+  @IsOptional() @IsString() contactId?: string;
 }

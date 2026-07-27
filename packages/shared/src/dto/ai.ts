@@ -5,6 +5,8 @@ export interface AskAstraDto {
   language?: string;
   /** Lets the reply style adapt — voice replies are short/spoken, no markdown. Defaults to 'chat'. */
   channel?: 'chat' | 'whatsapp' | 'voice';
+  /** "Test as this customer" — lets a published flow's order lookup use their real data. */
+  contactId?: string;
 }
 
 export interface AstraAnswerDto {
@@ -18,17 +20,4 @@ export interface AstraAnswerDto {
   ticketRef: string | null;
   /** true when `answer` is Agent Builder's ask_question clarifying prompt, not a completed answer. */
   clarifying?: boolean;
-}
-
-/** Astra's tone/style, shared by every channel (Chatbot, WhatsApp, Voice) regardless of which Agent Builder flow is published. */
-export type AiPersonaTone = 'friendly' | 'formal' | 'concise' | 'empathetic' | 'playful';
-
-export interface AiPersonaDto {
-  tone: AiPersonaTone;
-  description: string;
-}
-
-export interface UpdateAiPersonaDto {
-  tone: AiPersonaTone;
-  description: string;
 }

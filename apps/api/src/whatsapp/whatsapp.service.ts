@@ -128,7 +128,9 @@ export class WhatsappService {
         : answer.answer ?? '';
 
     await withTenant(this.prisma, tenantId, (tx) =>
-      tx.message.create({ data: { tenantId, conversationId: conversation.id, senderType: 'bot', body: replyText } }),
+      tx.message.create({
+        data: { tenantId, conversationId: conversation.id, senderType: 'bot', body: replyText, sources: answer.sources },
+      }),
     );
 
     await this.sendMessage(message.from, replyText);

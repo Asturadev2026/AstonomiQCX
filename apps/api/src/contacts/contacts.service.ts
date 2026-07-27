@@ -1,7 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { getPrisma, withTenant, type Contact } from '@aq/db';
+import { getPrisma, withTenant, nextRef, type Contact } from '@aq/db';
 import type { ContactDto } from '@aq/shared';
 import { CreateContactDto } from './create-contact.dto';
+import { AddContactOrderDto } from './add-contact-order.dto';
+
+export interface ContactOption {
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+}
 
 export interface ContactProfile {
   id: string;
@@ -114,6 +122,29 @@ export class ContactsService {
     });
   }
 
+  // Powers the "test as this customer" contact picker (Chatbot/WhatsApp/Voice AI
+  // demo widgets) — no production contact-search UI exists yet, so an empty
+  // query just returns the most recently created contacts to pick from.
+  async search(tenantId: string, q: string): Promise<ContactOption[]> {
+    const contacts = await withTenant(this.prisma, tenantId, (tx) =>
+      tx.contact.findMany({
+        where: q
+          ? {
+              OR: [
+                { name: { contains: q, mode: 'insensitive' } },
+                { phone: { contains: q } },
+                { email: { contains: q, mode: 'insensitive' } },
+              ],
+            }
+          : undefined,
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        select: { id: true, name: true, phone: true, email: true },
+      }),
+    );
+    return contacts.map((c) => ({ id: c.id, name: c.name ?? '(no name)', phone: c.phone, email: c.email }));
+  }
+
   async getLatestId(tenantId: string): Promise<string | null> {
     return withTenant(this.prisma, tenantId, async (tx) => {
       const contact = await tx.contact.findFirst({
@@ -172,6 +203,35 @@ export class ContactsService {
       status: o.status,
       createdAt: o.createdAt.toISOString(),
     }));
+  }
+
+  // Lets the "test as this customer" panel (Chatbot/WhatsApp/Voice AI) create a
+  // known order for a seeded contact, so its status/amount can be set deliberately
+  // instead of relying on the seed script's random data.
+  async addOrder(tenantId: string, contactId: string, dto: AddContactOrderDto): Promise<ContactOrderView> {
+    return withTenant(this.prisma, tenantId, async (tx) => {
+      const extRef = await nextRef(tx, tenantId, 'ZK-');
+      const order = await tx.order.create({
+        data: {
+          tenantId,
+          contactId,
+          extRef,
+          description: dto.description,
+          qty: dto.qty ?? 1,
+          amount: dto.amount,
+          status: dto.status,
+        },
+      });
+      await tx.contact.update({ where: { id: contactId }, data: { lifetimeValue: { increment: dto.amount } } });
+      return {
+        id: order.id,
+        extRef: order.extRef,
+        description: order.description,
+        amount: order.amount ? Number(order.amount) : null,
+        status: order.status,
+        createdAt: order.createdAt.toISOString(),
+      };
+    });
   }
 
   async getTickets(tenantId: string, id: string): Promise<ContactTicketView[]> {

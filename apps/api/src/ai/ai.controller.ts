@@ -10,6 +10,10 @@ export class AiController {
 
   @Post('ask')
   ask(@Req() req: TenantScopedRequest, @Body() dto: AskAstraDto) {
-    return this.svc.ask(req.tenantId, dto.question, { language: dto.language, channel: dto.channel });
+    return this.svc.ask(req.tenantId, dto.question, {
+      language: dto.language,
+      channel: dto.channel,
+      contactId: dto.contactId,
+    });
   }
 }

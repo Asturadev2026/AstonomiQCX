@@ -1,18 +1,25 @@
 import { useState } from 'react';
 import { useAuth } from '../state/auth';
+import { useTenants } from '../lib/api/hooks';
 
 /**
- * Login — exact port of the prototype's login screen.
+ * Login — exact port of the prototype's login screen, plus a workspace
+ * picker (there's no real per-user tenant membership yet — Guide §8 — so for
+ * now you just pick which seeded tenant to sign into).
  * The demo sign-in is replaced by a Keycloak PKCE redirect in the auth step;
- * only doLogin() changes.
+ * only doLogin() and this workspace picker change then.
  */
 export function Login() {
   const { signIn } = useAuth();
+  const { data: tenants } = useTenants();
+  const [subdomain, setSubdomain] = useState('');
   const [busy, setBusy] = useState(false);
+  const activeTenants = tenants?.filter((t) => t.status === 'active') ?? [];
 
   const doLogin = () => {
+    if (!subdomain) return;
     setBusy(true);
-    setTimeout(signIn, 500); // mirrors prototype behaviour until Keycloak
+    setTimeout(() => signIn(subdomain), 500); // mirrors prototype behaviour until Keycloak
   };
 
   return (
@@ -63,6 +70,32 @@ export function Login() {
         <h2>Welcome back 👋</h2>
         <p className="lead">Sign in to your AstronomiQ CX workspace</p>
         <div className="field">
+          <label>Workspace</label>
+          <select
+            value={subdomain}
+            onChange={(e) => setSubdomain(e.target.value)}
+            style={{
+              width: '100%',
+              background: 'var(--panel)',
+              border: '1.5px solid var(--line2)',
+              borderRadius: 11,
+              padding: '13px 14px',
+              fontSize: 14,
+              color: 'var(--text)',
+              outline: 'none',
+            }}
+          >
+            <option value="" disabled>
+              {tenants ? 'Select a workspace…' : 'Loading workspaces…'}
+            </option>
+            {activeTenants.map((t) => (
+              <option key={t.id} value={t.subdomain}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
           <label>Work email</label>
           <div className="inp">
             <svg className="fic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -90,7 +123,7 @@ export function Login() {
             Forgot password?
           </a>
         </div>
-        <button className="btn-login" onClick={doLogin} disabled={busy}>
+        <button className="btn-login" onClick={doLogin} disabled={busy || !subdomain}>
           {busy ? 'Signing in…' : 'Sign in to workspace'}
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18">
             <path d="M5 12h14M13 6l6 6-6 6" />
@@ -98,9 +131,9 @@ export function Login() {
         </button>
         <div className="divider">or continue with</div>
         <div className="sso">
-          <button onClick={doLogin}>🔵 Google</button>
-          <button onClick={doLogin}>🪟 Microsoft</button>
-          <button onClick={doLogin}>🔑 SSO</button>
+          <button onClick={doLogin} disabled={busy || !subdomain}>🔵 Google</button>
+          <button onClick={doLogin} disabled={busy || !subdomain}>🪟 Microsoft</button>
+          <button onClick={doLogin} disabled={busy || !subdomain}>🔑 SSO</button>
         </div>
         <div className="demo-note">
           ⚠️ Auth is not wired yet — Sign in currently opens the workspace

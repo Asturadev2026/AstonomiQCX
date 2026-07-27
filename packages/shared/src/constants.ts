@@ -117,6 +117,15 @@ export type CustomerType = (typeof CUSTOMER_TYPES)[number];
 export const CUSTOMER_SEGMENTS = ['new', 'regular', 'premium', 'vip'] as const;
 export type CustomerSegment = (typeof CUSTOMER_SEGMENTS)[number];
 
+export const ORDER_STATUSES = ['delivered', 'in_transit', 'refunded'] as const;
+export type OrderStatus = (typeof ORDER_STATUSES)[number];
+
+export const TENANT_PLANS = ['starter', 'business', 'enterprise'] as const;
+export type TenantPlan = (typeof TENANT_PLANS)[number];
+
+export const TENANT_STATUSES = ['active', 'suspended'] as const;
+export type TenantStatus = (typeof TENANT_STATUSES)[number];
+
 export const CONTACT_SOURCES = [
   'website',
   'whatsapp',
