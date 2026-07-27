@@ -16,3 +16,4 @@ export * from './dto/telephony';
 export * from './dto/field-service';
 export * from './dto/priority-matrix';
 export * from './dto/conversation';
+export * from './dto/tenant';

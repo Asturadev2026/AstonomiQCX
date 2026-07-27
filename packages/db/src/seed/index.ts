@@ -314,13 +314,15 @@ async function main() {
   });
   console.log(`Seeded tenant: ${tenant.name} (${tenant.id})`);
 
-  for (const role of DEFAULT_ROLES) {
-    await prisma.role.upsert({
-      where: { tenantId_name: { tenantId: tenant.id, name: role.name } },
-      update: { permissions: role.permissions },
-      create: { tenantId: tenant.id, name: role.name, permissions: role.permissions },
-    });
-  }
+  await withTenant(prisma, tenant.id, async (tx) => {
+    for (const role of DEFAULT_ROLES) {
+      await tx.role.upsert({
+        where: { tenantId_name: { tenantId: tenant.id, name: role.name } },
+        update: { permissions: role.permissions },
+        create: { tenantId: tenant.id, name: role.name, permissions: role.permissions },
+      });
+    }
+  });
   console.log(`Seeded ${DEFAULT_ROLES.length} default roles.`);
 
   await withTenant(prisma, tenant.id, async (tx) => {
@@ -876,6 +878,62 @@ async function main() {
       await tx.notification.createMany({ data: notifications });
       console.log(`Seeded ${notifications.length} notifications.`);
     }
+  });
+
+  // A second, lightweight tenant — a different demo business to switch into at
+  // login or via the Tenants admin page. Deliberately sparse (no KB articles,
+  // tickets, or agent flow) so it reads as a distinct, mostly-empty workspace
+  // rather than a Shopnova clone.
+  const secondTenant = await prisma.tenant.upsert({
+    where: { subdomain: 'northwind' },
+    update: {},
+    create: { name: 'Northwind Wellness', subdomain: 'northwind' },
+  });
+  console.log(`Seeded tenant: ${secondTenant.name} (${secondTenant.id})`);
+
+  await withTenant(prisma, secondTenant.id, async (tx) => {
+    for (const role of DEFAULT_ROLES) {
+      await tx.role.upsert({
+        where: { tenantId_name: { tenantId: secondTenant.id, name: role.name } },
+        update: { permissions: role.permissions },
+        create: { tenantId: secondTenant.id, name: role.name, permissions: role.permissions },
+      });
+    }
+  });
+
+  await withTenant(prisma, secondTenant.id, async (tx) => {
+    const existingContacts = await tx.contact.count({ where: { tenantId: secondTenant.id } });
+    if (existingContacts > 0) {
+      console.log('Northwind demo data already seeded — skipping.');
+      return;
+    }
+
+    for (let i = 0; i < 6; i++) {
+      const name = CONTACT_NAMES[i]!;
+      const emailSlug = name.toLowerCase().replace(/\s+/g, '.');
+      const contact = await tx.contact.create({
+        data: {
+          tenantId: secondTenant.id,
+          name,
+          phone: `9${(800000000 + i).toString()}`,
+          email: `${emailSlug}@example.com`,
+          location: CONTACT_CITIES[i],
+        },
+      });
+      if (i % 2 === 0) {
+        await tx.order.create({
+          data: {
+            tenantId: secondTenant.id,
+            contactId: contact.id,
+            extRef: await nextRef(tx, secondTenant.id, 'ZK-'),
+            description: 'Demo order',
+            amount: 799,
+            status: 'delivered',
+          },
+        });
+      }
+    }
+    console.log('Seeded 6 Northwind contacts.');
   });
 }
 

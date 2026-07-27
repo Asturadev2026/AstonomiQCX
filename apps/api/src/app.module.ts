@@ -2,7 +2,6 @@ import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { AgentBuilderModule } from './agent-builder/agent-builder.module';
 import { ActivityModule } from './activity/activity.module';
 import { AiModule } from './ai/ai.module';
-import { AiPersonaModule } from './ai-persona/ai-persona.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { AppController } from './app.controller';
 import { AuditModule } from './audit/audit.module';
@@ -27,6 +26,7 @@ import { SlaModule } from './sla/sla.module';
 import { SurveysModule } from './surveys/surveys.module';
 import { TelephonyModule } from './telephony/telephony.module';
 import { TenantMiddleware } from './tenancy/tenant.middleware';
+import { TenantsModule } from './tenants/tenants.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { VoiceModule } from './voice/voice.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
@@ -41,6 +41,7 @@ import { WorkforceModule } from './workforce/workforce.module';
     AutomationsModule,
     ContactCentreModule,
     ContactsModule,
+    TenantsModule,
     ConversationsModule,
     DepartmentsModule,
     FieldServiceModule,
@@ -49,7 +50,6 @@ import { WorkforceModule } from './workforce/workforce.module';
     KbModule,
     MacrosModule,
     AiModule,
-    AiPersonaModule,
     SurveysModule,
     CampaignsModule,
     PortalModule,

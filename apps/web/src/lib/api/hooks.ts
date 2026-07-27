@@ -1,7 +1,9 @@
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
+import { getActiveTenant } from '../../state/auth';
 import type {
+  AddContactOrderPayload,
+  AddFlowNodeDto,
   AgentFlowDto,
-  AiPersonaDto,
   AskAstraPayload,
   AstraAnswer,
   AnalyticsPayload,
@@ -9,6 +11,7 @@ import type {
   CampaignsPayload,
   CdrRowDto,
   ContactDto,
+  ContactOption,
   ContactOrder,
   ContactProfile,
   ContactTicket,
@@ -26,11 +29,13 @@ import type {
   FeedItem,
   FieldServiceKpis,
   FlowNodeConfig,
+  FlowNodeType,
   IvrMenuOptionDto,
   JourneyPayload,
   KbArticle,
   MacroDto,
   MentionCard,
+  MoveFlowNodeDto,
   MoveTicketDto,
   NavCounts,
   NumberDidDto,
@@ -42,6 +47,7 @@ import type {
   RuleDto,
   SendTestCallDto,
   ServiceVisitDto,
+  SetNextNodeDto,
   SlaBreachRow,
   SlaKpis,
   SlaPolicyDto,
@@ -52,10 +58,12 @@ import type {
   SurveysPayload,
   TelephonyIntegrationStatus,
   TelephonyKpis,
+  TenantDto,
+  CreateTenantPayload,
+  UpdateTenantStatusPayload,
   TestCallResultDto,
   ThreadMessage,
   TicketRow,
-  UpdateAiPersonaDto,
   WorkforceBoardDto,
   WorkforceRosterDto,
 } from './types';
@@ -70,12 +78,15 @@ import type {
 
 // Dev-only stand-in for real subdomain routing (Guide §6.2): the Vite proxy
 // strips the browser's real Host before forwarding to the API, so there is
-// no subdomain for TenantMiddleware to read. Replace with the tenant from
-// the logged-in session once login (Guide §7) is wired into the web app.
-const DEV_TENANT_HEADER = { 'x-tenant': 'shopnova' };
+// no subdomain for TenantMiddleware to read. getActiveTenant() reads the
+// tenant chosen at login (state/auth.tsx) — computed per-call, not cached at
+// module load, since it can change after a sign-out/sign-in.
+function tenantHeaders() {
+  return { 'x-tenant': getActiveTenant() };
+}
 
 async function api<T>(path: string): Promise<T> {
-  const res = await fetch(`/api/v1${path}`, { headers: DEV_TENANT_HEADER });
+  const res = await fetch(`/api/v1${path}`, { headers: tenantHeaders() });
   if (!res.ok) {
     throw new Error(`GET /api/v1${path} failed: ${res.status}`);
   }
@@ -86,7 +97,7 @@ async function api<T>(path: string): Promise<T> {
 async function post<TBody, TResult>(path: string, payload: TBody): Promise<TResult> {
   const res = await fetch(`/api/v1${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...DEV_TENANT_HEADER },
+    headers: { 'Content-Type': 'application/json', ...tenantHeaders() },
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
@@ -99,7 +110,7 @@ async function post<TBody, TResult>(path: string, payload: TBody): Promise<TResu
 async function patch<TResult>(path: string): Promise<TResult> {
   const res = await fetch(`/api/v1${path}`, {
     method: 'PATCH',
-    headers: DEV_TENANT_HEADER,
+    headers: tenantHeaders(),
   });
   if (!res.ok) {
     throw new Error(`PATCH /api/v1${path} failed: ${res.status}`);
@@ -111,7 +122,7 @@ async function patch<TResult>(path: string): Promise<TResult> {
 async function postAction<TResult>(path: string): Promise<TResult> {
   const res = await fetch(`/api/v1${path}`, {
     method: 'POST',
-    headers: DEV_TENANT_HEADER,
+    headers: tenantHeaders(),
   });
   if (!res.ok) {
     throw new Error(`POST /api/v1${path} failed: ${res.status}`);
@@ -123,7 +134,7 @@ async function postAction<TResult>(path: string): Promise<TResult> {
 async function patchBody<TBody, TResult>(path: string, payload: TBody): Promise<TResult> {
   const res = await fetch(`/api/v1${path}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...DEV_TENANT_HEADER },
+    headers: { 'Content-Type': 'application/json', ...tenantHeaders() },
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
@@ -215,10 +226,41 @@ export function useSessionUser() {
   });
 }
 
+export function useTenants() {
+  return useQuery<TenantDto[]>({
+    queryKey: ['tenants'],
+    queryFn: () => api('/tenants'),
+  });
+}
+
+export function useCreateTenant() {
+  const queryClient = useQueryClient();
+  return useMutation<TenantDto, Error, CreateTenantPayload>({
+    mutationFn: (payload) => post('/tenants', payload),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['tenants'] }),
+  });
+}
+
+export function useUpdateTenantStatus() {
+  const queryClient = useQueryClient();
+  return useMutation<TenantDto, Error, { id: string; status: UpdateTenantStatusPayload['status'] }>({
+    mutationFn: ({ id, status }) => patchBody(`/tenants/${id}/status`, { status }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['tenants'] }),
+  });
+}
+
 export function useLatestContact() {
   return useQuery<ContactProfile>({
     queryKey: ['contacts', 'latest'],
     queryFn: () => api('/contacts/latest'),
+  });
+}
+
+export function useContacts(q: string) {
+  return useQuery<ContactOption[]>({
+    queryKey: ['contacts', 'search', q],
+    queryFn: () => api(`/contacts?q=${encodeURIComponent(q)}`),
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -227,6 +269,17 @@ export function useContactOrders(contactId: string | undefined) {
     queryKey: ['contacts', contactId, 'orders'],
     queryFn: () => api(`/contacts/${contactId}/orders`),
     enabled: !!contactId,
+  });
+}
+
+export function useCreateContactOrder(contactId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation<ContactOrder, Error, AddContactOrderPayload>({
+    mutationFn: (payload) => post(`/contacts/${contactId}/orders`, payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['contacts', contactId, 'orders'] });
+      void queryClient.invalidateQueries({ queryKey: ['contacts', 'latest'] });
+    },
   });
 }
 
@@ -390,19 +443,44 @@ export function usePublishFlow() {
   });
 }
 
-export function useAiPersona() {
-  return useQuery<AiPersonaDto>({
-    queryKey: ['ai', 'persona'],
-    queryFn: () => api('/ai/persona'),
+export function useAddFlowNode() {
+  const queryClient = useQueryClient();
+  return useMutation<AgentFlowDto, Error, { flowId: string; type: FlowNodeType; afterNodeId: string | null }>({
+    mutationFn: ({ flowId, type, afterNodeId }) => post(`/agent-flows/${flowId}/nodes`, { type, afterNodeId } as AddFlowNodeDto),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['agent-flows', 'active'], data);
+    },
   });
 }
 
-export function useUpdateAiPersona() {
+export function useDeleteFlowNode() {
   const queryClient = useQueryClient();
-  return useMutation<AiPersonaDto, Error, UpdateAiPersonaDto>({
-    mutationFn: (payload) => post('/ai/persona', payload),
+  return useMutation<AgentFlowDto, Error, { flowId: string; nodeId: string }>({
+    mutationFn: ({ flowId, nodeId }) => post(`/agent-flows/${flowId}/nodes/${nodeId}/delete`, {}),
     onSuccess: (data) => {
-      queryClient.setQueryData(['ai', 'persona'], data);
+      queryClient.setQueryData(['agent-flows', 'active'], data);
+    },
+  });
+}
+
+export function useMoveFlowNode() {
+  const queryClient = useQueryClient();
+  return useMutation<AgentFlowDto, Error, { flowId: string; nodeId: string; afterNodeId: string | null }>({
+    mutationFn: ({ flowId, nodeId, afterNodeId }) =>
+      post(`/agent-flows/${flowId}/nodes/${nodeId}/move`, { afterNodeId } as MoveFlowNodeDto),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['agent-flows', 'active'], data);
+    },
+  });
+}
+
+export function useSetNextFlowNode() {
+  const queryClient = useQueryClient();
+  return useMutation<AgentFlowDto, Error, { flowId: string; nodeId: string; nextId: string | null }>({
+    mutationFn: ({ flowId, nodeId, nextId }) =>
+      post(`/agent-flows/${flowId}/nodes/${nodeId}/next`, { nextId } as SetNextNodeDto),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['agent-flows', 'active'], data);
     },
   });
 }

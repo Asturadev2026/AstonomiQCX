@@ -46,6 +46,11 @@ function formatViews(views: number): string {
   return views === 1 ? '1 view' : `${views.toLocaleString()} views`;
 }
 
+function formatCited(citedCount: number): string {
+  if (citedCount === 0) return 'Not cited yet';
+  return citedCount === 1 ? 'Cited 1 time' : `Cited ${citedCount.toLocaleString()} times`;
+}
+
 function truncate(text: string, max = 130): string {
   return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
 }
@@ -216,6 +221,7 @@ export function KnowledgeBase() {
                   <div className="ka-m">
                     <span>📁 {a.category ?? 'Uncategorised'}</span>
                     <span>👁 {formatViews(a.views)}</span>
+                    <span>🔗 {formatCited(a.citedCount)}</span>
                     <span>🕒 {timeAgo(a.updatedAt)}</span>
                   </div>
                 </div>
