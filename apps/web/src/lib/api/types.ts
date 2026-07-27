@@ -30,6 +30,7 @@ export interface ThreadMessage {
   role: 'cust' | 'bot' | 'agent';
   text: string;
   time: string;
+  sources?: string[];
 }
 export interface ConversationThread {
   id: string;
@@ -99,6 +100,15 @@ export interface AskAstraPayload {
   question: string;
   language?: string;
   channel?: 'chat' | 'whatsapp' | 'voice';
+  contactId?: string;
+}
+
+// GET /api/v1/contacts?q= — "test as this customer" picker (Chatbot/WhatsApp/Voice AI).
+export interface ContactOption {
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
 }
 
 export interface AstraAnswer {
@@ -339,6 +349,16 @@ export interface FeedItem {
 // POST /api/v1/contacts — request/response shapes mirror
 // @aq/shared's CreateContactDto/ContactDto (Guide §10 pattern).
 export type { ContactConsentDto, ContactDto, CreateContactDto, CreateContactOrderDto } from '@aq/shared';
+export type { OrderStatus } from '@aq/shared';
+
+// POST /api/v1/contacts/:id/orders — Customer test panel (Chatbot/WhatsApp/Voice AI).
+export type { AddContactOrderDto as AddContactOrderPayload } from '@aq/shared';
+
+// GET/POST /api/v1/tenants, PATCH /api/v1/tenants/:id/status — login workspace
+// picker + Tenants admin page.
+export type { TenantDto } from '@aq/shared';
+export type { CreateTenantDto as CreateTenantPayload } from '@aq/shared';
+export type { UpdateTenantStatusDto as UpdateTenantStatusPayload } from '@aq/shared';
 
 // GET /api/v1/contacts/latest, GET /api/v1/contacts/:id — Customer 360 profile card.
 export interface ContactProfile {
@@ -389,8 +409,8 @@ export interface SentimentMonth {
 // GET /api/v1/agent-flows/active, POST /api/v1/agent-flows/:id/nodes/:nodeId, POST /api/v1/agent-flows/:id/publish
 export type { AgentFlowDto, FlowNode, FlowNodeConfig, FlowNodeType, UpdateFlowNodeDto } from '@aq/shared';
 
-// GET/POST /api/v1/ai/persona
-export type { AiPersonaDto, AiPersonaTone, UpdateAiPersonaDto } from '@aq/shared';
+// POST /api/v1/agent-flows/:id/nodes, /:nodeId/delete, /:nodeId/move, /:nodeId/next
+export type { AddFlowNodeDto, MoveFlowNodeDto, SetNextNodeDto } from '@aq/shared';
 
 // GET /api/v1/rules, PATCH /api/v1/rules/:id/toggle
 export type { RuleAction, RuleCondition, RuleConditions, RuleDto } from '@aq/shared';
@@ -405,6 +425,7 @@ export interface KbArticle {
   language: string;
   status: string;
   views: number;
+  citedCount: number;
   createdAt: string;
   updatedAt: string;
 }

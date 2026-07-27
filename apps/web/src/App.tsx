@@ -29,6 +29,7 @@ import { Campaigns } from './modules/campaigns/Campaigns';
 import { SelfServicePortal } from './modules/portal/SelfServicePortal';
 import { AutoQA } from './modules/qa/AutoQA';
 import { Analytics } from './modules/analytics/Analytics';
+import { TenantsAdmin } from './modules/admin/TenantsAdmin';
 import { StubPage } from './components/StubPage';
 
 /** Views with a finished port register here; everything else renders its stub. */
@@ -58,6 +59,7 @@ const PORTED: Record<string, () => JSX.Element | null> = {
   portal: SelfServicePortal,
   qa: AutoQA,
   analytics: Analytics,
+  tenants: TenantsAdmin,
 };
 
 export function App() {
