@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { getPrisma, withTenant } from '@aq/db';
 import { env } from '../config/env';
 import { AiService } from '../ai/ai.service';
+import { ConversationsService } from '../conversations/conversations.service';
 
 // Meta's current stable Graph API version (verified July 2026) — Guide §13/Appendix E.
 const GRAPH_VERSION = 'v25.0';
@@ -23,7 +24,10 @@ export class WhatsappService {
   private readonly logger = new Logger(WhatsappService.name);
   private prisma = getPrisma();
 
-  constructor(private ai: AiService) {}
+  constructor(
+    private ai: AiService,
+    private conversations: ConversationsService,
+  ) {}
 
   isConfigured(): boolean {
     return Boolean(env.WA_ACCESS_TOKEN && env.WA_PHONE_NUMBER_ID);
@@ -108,16 +112,12 @@ export class WhatsappService {
       return existing ?? tx.contact.create({ data: { tenantId, phone: message.from, name } });
     });
 
-    const conversation = await withTenant(this.prisma, tenantId, async (tx) => {
-      const existing = await tx.conversation.findFirst({
-        where: { contactId: contact.id, channel: 'whatsapp', status: 'open' },
-      });
-      return existing ?? tx.conversation.create({ data: { tenantId, contactId: contact.id, channel: 'whatsapp' } });
+    const conversation = await this.conversations.findOrCreateOpenConversation(tenantId, {
+      contactId: contact.id,
+      channel: 'whatsapp',
     });
 
-    await withTenant(this.prisma, tenantId, (tx) =>
-      tx.message.create({ data: { tenantId, conversationId: conversation.id, senderType: 'customer', body: text } }),
-    );
+    await this.conversations.appendMessage(tenantId, conversation.id, { senderType: 'customer', body: text });
 
     // Guide §10.4: same Astra brain answers on every channel.
     const answer = await this.ai.ask(tenantId, text, { contactId: contact.id, conversationId: conversation.id });
@@ -127,11 +127,11 @@ export class WhatsappService {
         ? `Thanks — I've raised this with our team (ref ${answer.ticketRef}). They'll follow up shortly.`
         : answer.answer ?? '';
 
-    await withTenant(this.prisma, tenantId, (tx) =>
-      tx.message.create({
-        data: { tenantId, conversationId: conversation.id, senderType: 'bot', body: replyText, sources: answer.sources },
-      }),
-    );
+    await this.conversations.appendMessage(tenantId, conversation.id, {
+      senderType: 'bot',
+      body: replyText,
+      sources: answer.sources,
+    });
 
     await this.sendMessage(message.from, replyText);
   }

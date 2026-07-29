@@ -228,6 +228,44 @@ export class ConversationsService {
     });
   }
 
+  /**
+   * Shared by the AI-widget path (AiController) and the real WhatsApp webhook
+   * (WhatsappService) — same find-or-create-by-(contactId, channel, open) shape
+   * as WhatsappService's original inline logic, now in one place.
+   */
+  async findOrCreateOpenConversation(
+    tenantId: string,
+    params: { contactId?: string; channel: string },
+  ): Promise<{ id: string }> {
+    return withTenant(this.prisma, tenantId, async (tx) => {
+      if (!params.contactId) {
+        return tx.conversation.create({ data: { tenantId, channel: params.channel } });
+      }
+      const existing = await tx.conversation.findFirst({
+        where: { contactId: params.contactId, channel: params.channel, status: 'open' },
+      });
+      return existing ?? tx.conversation.create({ data: { tenantId, contactId: params.contactId, channel: params.channel } });
+    });
+  }
+
+  async appendMessage(
+    tenantId: string,
+    conversationId: string,
+    params: { senderType: 'customer' | 'bot' | 'agent'; body: string; sources?: string[] },
+  ): Promise<void> {
+    await withTenant(this.prisma, tenantId, (tx) =>
+      tx.message.create({
+        data: {
+          tenantId,
+          conversationId,
+          senderType: params.senderType,
+          body: params.body,
+          ...(params.sources ? { sources: params.sources } : {}),
+        },
+      }),
+    );
+  }
+
   async reply(tenantId: string, id: string, userId: string, text: string): Promise<ThreadMessage> {
     return withTenant(this.prisma, tenantId, async (tx) => {
       const conv = await tx.conversation.findUnique({ where: { id }, select: { id: true, status: true } });

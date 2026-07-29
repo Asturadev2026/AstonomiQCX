@@ -3,12 +3,15 @@ import { getActiveTenant } from '../../state/auth';
 import type {
   AddContactOrderPayload,
   AddFlowNodeDto,
+  AddIvrNodeDto,
   AgentFlowDto,
   AskAstraPayload,
   AstraAnswer,
   AnalyticsPayload,
   AuditLogRow,
   BillingPayload,
+  BridgeCallDto,
+  BridgeCallResultDto,
   CallWorkflowStepDto,
   CampaignsPayload,
   CdrRowDto,
@@ -21,6 +24,7 @@ import type {
   ConversationThread,
   ConvHubPayload,
   CreateContactDto,
+  CreateDialerCampaignDto,
   CreateInviteDto,
   CreateKbArticleDto,
   CreateNumberDidDto,
@@ -28,18 +32,24 @@ import type {
   CreateMacroDto,
   CreateTicketDto,
   DepartmentCardDto,
+  DialerCampaignDto,
   EscalationLevelDto,
   FeedItem,
   FieldServiceKpis,
   FlowNodeConfig,
   FlowNodeType,
   InviteDto,
+  IvrFlowDto,
   IvrMenuOptionDto,
+  IvrNodeConfig,
+  IvrNodeType,
   JourneyPayload,
   KbArticle,
+  LiveCallDto,
   MacroDto,
   MentionCard,
   MoveFlowNodeDto,
+  MoveIvrNodeDto,
   MoveTicketDto,
   NavCounts,
   NumberDidDto,
@@ -51,6 +61,8 @@ import type {
   RuleDto,
   SendTestCallDto,
   ServiceVisitDto,
+  SetIvrBranchDto,
+  SetIvrNextDto,
   SetNextNodeDto,
   SlaBreachRow,
   SlaKpis,
@@ -70,6 +82,7 @@ import type {
   TestCallResultDto,
   ThreadMessage,
   TicketRow,
+  UpdateIvrNodeDto,
   WorkforceBoardDto,
   WorkforceRosterDto,
 } from './types';
@@ -693,6 +706,117 @@ export function useCdr() {
   return useQuery<CdrRowDto[]>({
     queryKey: ['telephony', 'cdr'],
     queryFn: () => api('/telephony/cdr'),
+  });
+}
+
+export function useLiveCalls() {
+  return useQuery<LiveCallDto[]>({
+    queryKey: ['telephony', 'live-calls'],
+    queryFn: () => api('/telephony/live-calls'),
+    refetchInterval: 5_000,
+  });
+}
+
+export function useBridgeCall() {
+  return useMutation<BridgeCallResultDto, Error, BridgeCallDto>({
+    mutationFn: (payload) => post('/telephony/bridge', payload),
+  });
+}
+
+export function useDialerCampaigns() {
+  return useQuery<DialerCampaignDto[]>({
+    queryKey: ['telephony', 'dialer-campaigns'],
+    queryFn: () => api('/telephony/dialer-campaigns'),
+  });
+}
+
+export function useCreateDialerCampaign() {
+  const queryClient = useQueryClient();
+  return useMutation<DialerCampaignDto, Error, CreateDialerCampaignDto>({
+    mutationFn: (payload) => post('/telephony/dialer-campaigns', payload),
+    onSuccess: (created) => {
+      queryClient.setQueryData<DialerCampaignDto[]>(['telephony', 'dialer-campaigns'], (rows) => [created, ...(rows ?? [])]);
+    },
+  });
+}
+
+export function useIvrFlow() {
+  return useQuery<IvrFlowDto>({
+    queryKey: ['telephony', 'ivr', 'active'],
+    queryFn: () => api('/telephony/ivr/active'),
+  });
+}
+
+export function useAddIvrNode() {
+  const queryClient = useQueryClient();
+  return useMutation<IvrFlowDto, Error, { flowId: string; type: IvrNodeType; afterNodeId: string | null }>({
+    mutationFn: ({ flowId, type, afterNodeId }) => post(`/telephony/ivr/${flowId}/nodes`, { type, afterNodeId } as AddIvrNodeDto),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['telephony', 'ivr', 'active'], data);
+    },
+  });
+}
+
+export function useUpdateIvrNode() {
+  const queryClient = useQueryClient();
+  return useMutation<IvrFlowDto, Error, { flowId: string; nodeId: string; config: IvrNodeConfig }>({
+    mutationFn: ({ flowId, nodeId, config }) => post(`/telephony/ivr/${flowId}/nodes/${nodeId}`, { config } as UpdateIvrNodeDto),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['telephony', 'ivr', 'active'], data);
+    },
+  });
+}
+
+export function useDeleteIvrNode() {
+  const queryClient = useQueryClient();
+  return useMutation<IvrFlowDto, Error, { flowId: string; nodeId: string }>({
+    mutationFn: ({ flowId, nodeId }) => post(`/telephony/ivr/${flowId}/nodes/${nodeId}/delete`, {}),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['telephony', 'ivr', 'active'], data);
+    },
+  });
+}
+
+export function useMoveIvrNode() {
+  const queryClient = useQueryClient();
+  return useMutation<IvrFlowDto, Error, { flowId: string; nodeId: string; afterNodeId: string | null }>({
+    mutationFn: ({ flowId, nodeId, afterNodeId }) =>
+      post(`/telephony/ivr/${flowId}/nodes/${nodeId}/move`, { afterNodeId } as MoveIvrNodeDto),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['telephony', 'ivr', 'active'], data);
+    },
+  });
+}
+
+export function useSetIvrNext() {
+  const queryClient = useQueryClient();
+  return useMutation<IvrFlowDto, Error, { flowId: string; nodeId: string; nextId: string | null }>({
+    mutationFn: ({ flowId, nodeId, nextId }) =>
+      post(`/telephony/ivr/${flowId}/nodes/${nodeId}/next`, { nextId } as SetIvrNextDto),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['telephony', 'ivr', 'active'], data);
+    },
+  });
+}
+
+export function useSetIvrBranch() {
+  const queryClient = useQueryClient();
+  return useMutation<IvrFlowDto, Error, { flowId: string; nodeId: string; digit: string; nextId: string | null }>({
+    mutationFn: ({ flowId, nodeId, digit, nextId }) =>
+      post(`/telephony/ivr/${flowId}/nodes/${nodeId}/branch`, { digit, nextId } as SetIvrBranchDto),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['telephony', 'ivr', 'active'], data);
+    },
+  });
+}
+
+export function usePublishIvrFlow() {
+  const queryClient = useQueryClient();
+  return useMutation<IvrFlowDto, Error, { flowId: string }>({
+    mutationFn: ({ flowId }) => post(`/telephony/ivr/${flowId}/publish`, {}),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['telephony', 'ivr', 'active'], data);
+    },
   });
 }
 

@@ -1,6 +1,8 @@
 import { Body, Controller, Get, Post, Req } from '@nestjs/common';
 import type { TenantScopedRequest } from '../tenancy/tenant.middleware';
 import { TelephonyService } from './telephony.service';
+import { BridgeCallDto } from './bridge-call.dto';
+import { CreateDialerCampaignDto } from './create-dialer-campaign.dto';
 import { CreateNumberDto } from './create-number.dto';
 import { SendTestCallDto } from './send-test-call.dto';
 
@@ -42,5 +44,25 @@ export class TelephonyController {
   @Get('cdr')
   cdr(@Req() req: TenantScopedRequest) {
     return this.svc.cdr(req.tenantId);
+  }
+
+  @Get('live-calls')
+  liveCalls(@Req() req: TenantScopedRequest) {
+    return this.svc.liveCalls(req.tenantId);
+  }
+
+  @Post('bridge')
+  bridgeCall(@Req() req: TenantScopedRequest, @Body() dto: BridgeCallDto) {
+    return this.svc.bridgeCall(req.tenantId, dto.fromNumber, dto.toNumber);
+  }
+
+  @Get('dialer-campaigns')
+  listDialerCampaigns(@Req() req: TenantScopedRequest) {
+    return this.svc.listDialerCampaigns(req.tenantId);
+  }
+
+  @Post('dialer-campaigns')
+  createDialerCampaign(@Req() req: TenantScopedRequest, @Body() dto: CreateDialerCampaignDto) {
+    return this.svc.createDialerCampaign(req.tenantId, dto);
   }
 }

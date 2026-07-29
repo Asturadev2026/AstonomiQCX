@@ -61,3 +61,43 @@ export interface CallWorkflowStepDto {
   label: string;
   detail: string;
 }
+
+export interface LiveCallDto {
+  id: string;
+  createdAt: string;
+  direction: string | null;
+  fromNum: string | null;
+  toNum: string | null;
+  virtualNum: string | null;
+  status: string;
+  agentName: string | null;
+  queueName: string | null;
+  contactId: string | null;
+  contactName: string | null;
+}
+
+export interface BridgeCallDto {
+  fromNumber: string;
+  toNumber: string;
+}
+
+export interface BridgeCallResultDto {
+  configured: boolean;
+  callSid?: string;
+  status?: string;
+}
+
+export interface DialerCampaignDto {
+  id: string;
+  name: string | null;
+  segment: string | null;
+  status: string | null;
+  sent: number;
+  delivered: number;
+  createdAt: string;
+}
+
+export interface CreateDialerCampaignDto {
+  name: string;
+  segment?: string;
+}

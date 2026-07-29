@@ -450,14 +450,32 @@ export type { ContactCentreKpis, IvrMenuOptionDto } from '@aq/shared';
 
 // GET /api/v1/telephony/*, POST /api/v1/telephony/test-call, /telephony/numbers
 export type {
+  BridgeCallDto,
+  BridgeCallResultDto,
   CallWorkflowStepDto,
   CdrRowDto,
+  CreateDialerCampaignDto,
   CreateNumberDidDto,
+  DialerCampaignDto,
+  LiveCallDto,
   NumberDidDto,
   SendTestCallDto,
   TelephonyIntegrationStatus,
   TelephonyKpis,
   TestCallResultDto,
+} from '@aq/shared';
+
+// GET /api/v1/telephony/ivr/active, POST /api/v1/telephony/ivr/:id/nodes, /:nodeId, /:nodeId/delete, /:nodeId/move, /:nodeId/next, /:nodeId/branch, /:id/publish
+export type {
+  AddIvrNodeDto,
+  IvrFlowDto,
+  IvrNode,
+  IvrNodeConfig,
+  IvrNodeType,
+  MoveIvrNodeDto,
+  SetIvrBranchDto,
+  SetIvrNextDto,
+  UpdateIvrNodeDto,
 } from '@aq/shared';
 
 // GET /api/v1/field-service/kpis, /field-service/visits
