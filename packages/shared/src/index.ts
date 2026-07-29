@@ -7,6 +7,7 @@ export * from './dto/ai';
 export * from './dto/audit';
 export * from './dto/voice';
 export * from './dto/agent-flow';
+export * from './dto/ivr-flow';
 export * from './dto/rule';
 export * from './dto/macro';
 export * from './dto/sla';

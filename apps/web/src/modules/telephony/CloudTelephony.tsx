@@ -1,8 +1,12 @@
 import { useState } from 'react';
 import {
+  useBridgeCall,
   useCallWorkflowSteps,
   useCdr,
+  useCreateDialerCampaign,
   useCreateTelephonyNumber,
+  useDialerCampaigns,
+  useLiveCalls,
   useSendTestCall,
   useTelephonyIntegrationStatus,
   useTelephonyKpis,
@@ -11,18 +15,21 @@ import {
 import { ErrorState, LoadingState } from '../../components/states';
 import { useToast } from '../../components/Toast';
 import { downloadCsv } from '../../lib/csv';
+import { IvrBuilder } from './IvrBuilder';
 
 /**
  * Cloud Telephony — exact port of the prototype's #telephony section
  * (markup/classes verbatim from docs/AstronomiQ-CX_1.html, styles from
- * styles/prototype.css). Scoped via the user's explicit choice: real Call
- * logs (CDR) + real KPIs where a real source exists, a real Exotel
- * integration settings form (works with real credentials once added, same
- * "not configured" degradation as WhatsApp/Sarvam/ElevenLabs), and a real
- * virtual-numbers CRUD table. The IVR call-flow builder and Live
- * console/Masking bridge are NOT built — genuinely impossible without a
- * connected phone line, same deferral as Voice AI's live-call half — shown
- * as an honest "needs Exotel" note per tab instead.
+ * styles/prototype.css), now fully built out: real Call logs (CDR) + real
+ * KPIs where a real source exists, a real Exotel integration settings form
+ * (works with real credentials once added, same "not configured" degradation
+ * as WhatsApp/Sarvam/ElevenLabs), a real virtual-numbers CRUD table, a real
+ * IVR call-flow builder (IvrBuilder.tsx — same AgentFlow storage as Agent
+ * Builder), a real live-console read (populated by ExotelWebhookService as
+ * inbound call events arrive), and real masking/dialer (bridge two numbers
+ * via Exotel, plus a dialer-campaigns table). Every screen reads/writes real
+ * rows; the parts that need an actual phone line correctly show an
+ * empty/"not configured" state until Exotel credentials are added.
  */
 
 type Tab = 'overview' | 'integration' | 'ivr' | 'console' | 'masking' | 'cdr';
@@ -38,7 +45,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
 
 const STEP_COLORS = ['#2563EB', '#0EA5E9', '#4F46E5', '#E08A00', '#16A34A', '#DB2777'];
 
-function NotConnectedNote({ children }: { children: React.ReactNode }) {
+function EmptyNote({ children }: { children: React.ReactNode }) {
   return (
     <div
       style={{
@@ -327,43 +334,228 @@ function IntegrationTab() {
 function IvrTab() {
   return (
     <div className="tel-panel on">
-      <div className="card">
-        <h3>Call flow (IVR builder)</h3>
-        <div className="cap">Visual, publishable IVR flow builder</div>
-        <NotConnectedNote>
-          Not built yet — this needs both a connected phone line (Exotel) and a second visual flow-builder (like
-          Agent Builder, but for phone menus). A real, static IVR reference menu is already live on the Contact
-          Centre screen.
-        </NotConnectedNote>
-      </div>
+      <IvrBuilder />
     </div>
   );
 }
 
 function ConsoleTab() {
+  const liveCalls = useLiveCalls();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  if (liveCalls.isLoading) return <LoadingState />;
+  if (liveCalls.error || !liveCalls.data) return <ErrorState error={liveCalls.error} retry={() => void liveCalls.refetch()} />;
+
+  const calls = liveCalls.data;
+  const selected = calls.find((c) => c.id === selectedId) ?? calls[0] ?? null;
+
   return (
     <div className="tel-panel on">
-      <div className="card">
-        <h3>Agent live console (CTI softphone)</h3>
-        <div className="cap">Screen-pop the customer's profile the instant a call lands</div>
-        <NotConnectedNote>
-          No live calls to show — this needs a connected telephony integration (Exotel) with real call audio, which
-          isn't set up yet.
-        </NotConnectedNote>
+      <div style={{ marginBottom: 14 }}>
+        <h3 style={{ fontSize: 15 }}>Agent live console (CTI softphone)</h3>
+        <div className="cap" style={{ margin: '2px 0 0' }}>
+          Screen-pop the customer's profile the instant a call lands · refreshes every 5s
+        </div>
+      </div>
+      <div className="grid" style={{ gridTemplateColumns: '1.3fr 1fr', alignItems: 'start' }}>
+        <div className="card" style={{ overflowX: 'auto' }}>
+          {calls.length === 0 ? (
+            <EmptyNote>
+              No live calls right now — this table fills in the instant Exotel delivers a real inbound call event to
+              the webhook.
+            </EmptyNote>
+          ) : (
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>From → To</th>
+                  <th>Agent</th>
+                  <th>Queue</th>
+                  <th>Started</th>
+                </tr>
+              </thead>
+              <tbody>
+                {calls.map((c) => (
+                  <tr key={c.id} onClick={() => setSelectedId(c.id)} style={{ cursor: 'pointer', background: selected?.id === c.id ? 'var(--panel)' : undefined }}>
+                    <td style={{ color: c.status === 'live' ? 'var(--green)' : 'var(--amber)' }}>{c.status}</td>
+                    <td className="mono">
+                      {c.fromNum ?? '—'} → {c.toNum ?? c.virtualNum ?? '—'}
+                    </td>
+                    <td>{c.agentName ?? '—'}</td>
+                    <td>{c.queueName ?? '—'}</td>
+                    <td className="mono">{new Date(c.createdAt).toLocaleTimeString('en-IN')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        <div className="card">
+          <h3>Screen-pop</h3>
+          <div className="cap">Customer context for the selected call</div>
+          {selected ? (
+            <div style={{ marginTop: 10 }}>
+              <div className="cred">
+                <div className="cl">Contact</div>
+                <div className="cv">{selected.contactName ?? selected.fromNum ?? 'Unknown'}</div>
+              </div>
+              <div className="cred">
+                <div className="cl">Direction</div>
+                <div className="cv">{selected.direction ?? '—'}</div>
+              </div>
+              <div className="cred">
+                <div className="cl">Queue</div>
+                <div className="cv">{selected.queueName ?? '—'}</div>
+              </div>
+              <div className="cred">
+                <div className="cl">Agent</div>
+                <div className="cv">{selected.agentName ?? 'Unassigned'}</div>
+              </div>
+            </div>
+          ) : (
+            <EmptyNote>Select a live call to see its screen-pop.</EmptyNote>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
 function MaskingTab() {
+  const bridgeCall = useBridgeCall();
+  const campaigns = useDialerCampaigns();
+  const createCampaign = useCreateDialerCampaign();
+  const toast = useToast();
+
+  const [fromNumber, setFromNumber] = useState('');
+  const [toNumber, setToNumber] = useState('');
+  const [showAddCampaign, setShowAddCampaign] = useState(false);
+  const [campaignName, setCampaignName] = useState('');
+  const [campaignSegment, setCampaignSegment] = useState('');
+
+  if (campaigns.isLoading) return <LoadingState />;
+  if (campaigns.error || !campaigns.data) return <ErrorState error={campaigns.error} retry={() => void campaigns.refetch()} />;
+
+  function bridge() {
+    if (!fromNumber.trim() || !toNumber.trim()) {
+      toast('Enter both numbers to bridge');
+      return;
+    }
+    bridgeCall.mutate(
+      { fromNumber: fromNumber.trim(), toNumber: toNumber.trim() },
+      {
+        onSuccess: (res) =>
+          toast(res.configured ? `Bridging call — ${res.status ?? 'queued'} ✓` : 'Exotel is not configured yet — add EXOTEL_* keys to .env'),
+        onError: (err) => toast(err instanceof Error ? err.message : 'Bridge call failed'),
+      },
+    );
+  }
+
+  function submitCampaign() {
+    if (!campaignName.trim()) {
+      toast('Campaign name is required');
+      return;
+    }
+    createCampaign.mutate(
+      { name: campaignName.trim(), segment: campaignSegment.trim() || undefined },
+      {
+        onSuccess: () => {
+          toast('Dialer campaign created ✓');
+          setCampaignName('');
+          setCampaignSegment('');
+          setShowAddCampaign(false);
+        },
+        onError: (err) => toast(err instanceof Error ? err.message : 'Could not create campaign'),
+      },
+    );
+  }
+
   return (
     <div className="tel-panel on">
-      <div className="card">
-        <h3>Number masking &amp; outbound dialer</h3>
-        <div className="cap">Bridge two real numbers, or run outbound campaigns</div>
-        <NotConnectedNote>
-          Needs a connected telephony integration (Exotel) that can actually bridge two live calls — not set up yet.
-        </NotConnectedNote>
+      <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', alignItems: 'start' }}>
+        <div className="card">
+          <h3>Number masking &amp; bridge</h3>
+          <div className="cap">Bridge two real numbers through Exotel</div>
+          <div style={{ marginTop: 10, marginBottom: 6 }}>
+            <label style={{ fontSize: 11.5, fontWeight: 600, display: 'block', marginBottom: 6 }}>From number</label>
+            <input
+              value={fromNumber}
+              onChange={(e) => setFromNumber(e.target.value)}
+              placeholder="+91 98765 43210"
+              style={{ width: '100%', background: 'var(--panel)', border: '1px solid var(--line2)', borderRadius: 9, padding: 9, fontSize: 12.5, outline: 'none', color: 'var(--text)' }}
+            />
+          </div>
+          <div style={{ marginBottom: 6 }}>
+            <label style={{ fontSize: 11.5, fontWeight: 600, display: 'block', marginBottom: 6 }}>To number</label>
+            <input
+              value={toNumber}
+              onChange={(e) => setToNumber(e.target.value)}
+              placeholder="+91 91234 56789"
+              style={{ width: '100%', background: 'var(--panel)', border: '1px solid var(--line2)', borderRadius: 9, padding: 9, fontSize: 12.5, outline: 'none', color: 'var(--text)' }}
+            />
+          </div>
+          <button className="btn btn-o" style={{ width: '100%', justifyContent: 'center', marginTop: 10 }} onClick={bridge} disabled={bridgeCall.isPending}>
+            Bridge call
+          </button>
+        </div>
+        <div className="card">
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <div>
+              <h3>Dialer campaigns</h3>
+              <div className="cap">Outbound voice campaigns</div>
+            </div>
+            <button className="btn btn-g" style={{ marginLeft: 'auto' }} onClick={() => setShowAddCampaign((v) => !v)}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              New campaign
+            </button>
+          </div>
+          {showAddCampaign && (
+            <div style={{ marginTop: 10, marginBottom: 10 }}>
+              <input
+                value={campaignName}
+                onChange={(e) => setCampaignName(e.target.value)}
+                placeholder="Campaign name"
+                style={{ width: '100%', marginBottom: 6, background: 'var(--panel)', border: '1px solid var(--line2)', borderRadius: 9, padding: 9, fontSize: 12.5, outline: 'none', color: 'var(--text)' }}
+              />
+              <input
+                value={campaignSegment}
+                onChange={(e) => setCampaignSegment(e.target.value)}
+                placeholder="Segment, e.g. Overdue payments"
+                style={{ width: '100%', marginBottom: 8, background: 'var(--panel)', border: '1px solid var(--line2)', borderRadius: 9, padding: 9, fontSize: 12.5, outline: 'none', color: 'var(--text)' }}
+              />
+              <button className="btn btn-g" style={{ width: '100%', justifyContent: 'center' }} onClick={submitCampaign} disabled={createCampaign.isPending}>
+                Save campaign
+              </button>
+            </div>
+          )}
+          {campaigns.data.length === 0 ? (
+            <EmptyNote>No dialer campaigns yet.</EmptyNote>
+          ) : (
+            <table className="tbl" style={{ marginTop: 8 }}>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Segment</th>
+                  <th>Status</th>
+                  <th>Sent</th>
+                </tr>
+              </thead>
+              <tbody>
+                {campaigns.data.map((c) => (
+                  <tr key={c.id}>
+                    <td>{c.name ?? '—'}</td>
+                    <td>{c.segment ?? '—'}</td>
+                    <td>{c.status ?? '—'}</td>
+                    <td className="mono">{c.sent}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
     </div>
   );

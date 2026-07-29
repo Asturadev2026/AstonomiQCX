@@ -1,9 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { getPrisma, withTenant } from '@aq/db';
 import type {
+  BridgeCallResultDto,
   CallWorkflowStepDto,
   CdrRowDto,
+  CreateDialerCampaignDto,
   CreateNumberDidDto,
+  DialerCampaignDto,
+  LiveCallDto,
   NumberDidDto,
   TelephonyIntegrationStatus,
   TelephonyKpis,
@@ -21,12 +25,14 @@ function isExotelConfigured(): boolean {
 }
 
 /**
- * Real Cloud Telephony data — Guide §13.4/Appendix E. Scoped to "CDR + real
- * KPIs + real Integration settings + real Virtual numbers" (user's explicit
- * choice): the IVR call-flow builder and Live console/Masking bridge are
- * genuinely impossible without a connected phone line, so they're not built
- * here — same deferral as Voice AI's live-call half and Contact Centre's
- * live monitoring.
+ * Real Cloud Telephony data — Guide §13.4/Appendix E: KPIs, Integration
+ * settings, Virtual numbers, CDR, live-call reads, and Exotel bridging.
+ * The IVR flow builder lives in IvrFlowService (same AgentFlow storage as
+ * Agent Builder, kind: 'ivr'); live call state is populated by
+ * ExotelWebhookService as real inbound events arrive. Everything here reads/
+ * writes real rows — it correctly shows empty/"not configured" until Exotel
+ * credentials + a live number are actually connected, same degrade pattern
+ * as sendTestCall/bridgeCall.
  */
 @Injectable()
 export class TelephonyService {
@@ -51,7 +57,7 @@ export class TelephonyService {
       configured: isExotelConfigured(),
       maskedSid: env.EXOTEL_SID ? mask(env.EXOTEL_SID) : null,
       maskedToken: env.EXOTEL_API_TOKEN ? mask(env.EXOTEL_API_TOKEN) : null,
-      webhookUrl: 'api.astronomiq.in/tel/exotel/hook',
+      webhookUrl: 'https://api.astronomiq.in/api/v1/webhooks/exotel/call',
       subdomain: env.EXOTEL_SUBDOMAIN || 'api.exotel.com',
     };
   }
@@ -117,6 +123,103 @@ export class TelephonyService {
         disposition: c.disposition ?? c.status,
         recordingUrl: c.recordingUrl,
       }));
+    });
+  }
+
+  /** Calls currently ringing or live — polled by the Live console tab. Real DB read; empty until Exotel actually delivers call events to the webhook. */
+  async liveCalls(tenantId: string): Promise<LiveCallDto[]> {
+    return withTenant(this.prisma, tenantId, async (tx) => {
+      const calls = await tx.call.findMany({
+        where: { status: { in: ['ringing', 'live'] } },
+        include: { agent: true, contact: true, queue: true },
+        orderBy: { createdAt: 'desc' },
+      });
+      return calls.map((c) => ({
+        id: c.id,
+        createdAt: c.createdAt.toISOString(),
+        direction: c.direction,
+        fromNum: c.fromNum,
+        toNum: c.toNum,
+        virtualNum: c.virtualNum,
+        status: c.status,
+        agentName: c.agent?.name ?? null,
+        queueName: c.queue?.name ?? null,
+        contactId: c.contactId,
+        contactName: c.contact?.name ?? null,
+      }));
+    });
+  }
+
+  /**
+   * Real Exotel Connect-Two-Numbers call (Guide §13.4), bridging two distinct
+   * real numbers instead of sendTestCall's loop-back-to-self connectivity
+   * check. Gracefully degrades when Exotel isn't configured, same pattern as
+   * every other integration.
+   */
+  async bridgeCall(tenantId: string, fromNumber: string, toNumber: string): Promise<BridgeCallResultDto> {
+    if (!isExotelConfigured()) {
+      return { configured: false };
+    }
+    const subdomain = env.EXOTEL_SUBDOMAIN || 'api.exotel.com';
+    const url = `https://${env.EXOTEL_API_KEY}:${env.EXOTEL_API_TOKEN}@${subdomain}/v1/Accounts/${env.EXOTEL_SID}/Calls/connect.json`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ From: fromNumber, To: toNumber, CallerId: fromNumber }),
+    });
+    if (!res.ok) {
+      const detail = await res.text();
+      this.logger.warn(`Exotel bridge call failed: ${res.status} ${detail}`);
+      throw new Error(`Exotel rejected the bridge request (${res.status}) — check credentials`);
+    }
+    const body = (await res.json()) as { Call?: { Sid?: string; Status?: string } };
+
+    await withTenant(this.prisma, tenantId, (tx) =>
+      tx.call.create({
+        data: {
+          tenantId,
+          externalId: body.Call?.Sid,
+          direction: 'masked',
+          fromNum: fromNumber,
+          toNum: toNumber,
+          status: 'ringing',
+        },
+      }),
+    );
+
+    return { configured: true, callSid: body.Call?.Sid, status: body.Call?.Status };
+  }
+
+  /** Outbound dialer campaigns — reuses the Campaign model (channel: 'voice'), same shallow row-write pattern as CampaignsService.send(). */
+  async listDialerCampaigns(tenantId: string): Promise<DialerCampaignDto[]> {
+    return withTenant(this.prisma, tenantId, async (tx) => {
+      const rows = await tx.campaign.findMany({ where: { channel: 'voice' }, orderBy: { createdAt: 'desc' } });
+      return rows.map((c) => ({
+        id: c.id,
+        name: c.name,
+        segment: c.segment,
+        status: c.status,
+        sent: c.sent,
+        delivered: c.delivered,
+        createdAt: c.createdAt.toISOString(),
+      }));
+    });
+  }
+
+  async createDialerCampaign(tenantId: string, dto: CreateDialerCampaignDto): Promise<DialerCampaignDto> {
+    return withTenant(this.prisma, tenantId, async (tx) => {
+      const created = await tx.campaign.create({
+        data: { tenantId, name: dto.name, segment: dto.segment, channel: 'voice', status: 'scheduled' },
+      });
+      return {
+        id: created.id,
+        name: created.name,
+        segment: created.segment,
+        status: created.status,
+        sent: created.sent,
+        delivered: created.delivered,
+        createdAt: created.createdAt.toISOString(),
+      };
     });
   }
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useAskAstra } from '../../lib/api/hooks';
+import { useAskAstra, useSessionUser } from '../../lib/api/hooks';
 import { useToast } from '../../components/Toast';
 import { useTestContact } from '../../state/testContact';
 import { CustomerTestPanel } from '../../components/CustomerTestPanel';
@@ -33,10 +33,14 @@ function nowLabel(): string {
   return `${h}:${m} ${n.getHours() < 12 ? 'AM' : 'PM'}`;
 }
 
+function welcomeMessage(tenantName?: string): WaMessage {
+  const business = tenantName || 'us';
+  return { dir: 'in', text: `Namaste 👋 Welcome to ${business} on WhatsApp! Reply with a number:`, time: nowLabel() };
+}
+
 export function WhatsappBot() {
-  const [messages, setMessages] = useState<WaMessage[]>([
-    { dir: 'in', text: 'Namaste 👋 Welcome to ShopNova on WhatsApp! Reply with a number:', time: nowLabel() },
-  ]);
+  const { data: sessionUser } = useSessionUser();
+  const [messages, setMessages] = useState<WaMessage[]>([welcomeMessage()]);
   const [showFlow, setShowFlow] = useState(true);
   const [input, setInput] = useState('');
   const { contact } = useTestContact();
@@ -44,13 +48,13 @@ export function WhatsappBot() {
   const toast = useToast();
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  // Reset the conversation whenever the Topbar's "test as customer" selection changes.
+  // Reset the conversation whenever the Topbar's "test as customer" selection
+  // changes, or once the signed-in tenant's name loads (so the initial welcome —
+  // rendered before that resolves — gets replaced rather than staying generic).
   useEffect(() => {
     setShowFlow(true);
-    setMessages([
-      { dir: 'in', text: 'Namaste 👋 Welcome to ShopNova on WhatsApp! Reply with a number:', time: nowLabel() },
-    ]);
-  }, [contact?.id]);
+    setMessages([welcomeMessage(sessionUser?.tenantName)]);
+  }, [contact?.id, sessionUser?.tenantName]);
 
   useEffect(() => {
     if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
@@ -64,7 +68,7 @@ export function WhatsappBot() {
     setShowFlow(false);
 
     ask.mutate(
-      { question: msg, contactId: contact?.id },
+      { question: msg, contactId: contact?.id, channel: 'whatsapp' },
       {
         onSuccess: (res) => {
           const reply = !res.configured
@@ -91,7 +95,7 @@ export function WhatsappBot() {
             </svg>
           </div>
           <div>
-            <b>ShopNova</b>
+            <b>{sessionUser?.tenantName || 'Your business'}</b>
             <small>● Business · replies instantly</small>
           </div>
         </div>
@@ -147,7 +151,7 @@ export function WhatsappBot() {
           <b>500M+</b>
         </div>
         <div className="infoline">
-          <span>ShopNova queries on WhatsApp</span>
+          <span>Support queries on WhatsApp</span>
           <b>46%</b>
         </div>
         <div className="infoline">

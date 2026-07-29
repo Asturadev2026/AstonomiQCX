@@ -487,6 +487,7 @@ model Call {
   queueId      String?  @map("queue_id") @db.Uuid
   queue        Queue?   @relation(fields: [queueId], references: [id])
   status       String   @default("completed") // ringing | live | completed | abandoned
+  externalId   String?  @map("external_id") // carrier CallSid — correlates webhook updates to one row
   durationS    Int?     @map("duration_s")
   disposition  String?
   recordingUrl String?  @map("recording_url") // S3 key; served via presigned GET (Guide D.4)
@@ -502,6 +503,7 @@ model Call {
 
   @@index([tenantId, createdAt])
   @@index([tenantId, status])
+  @@index([tenantId, externalId])
   @@map("calls")
 }
 

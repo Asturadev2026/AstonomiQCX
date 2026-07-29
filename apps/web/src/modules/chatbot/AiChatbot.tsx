@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useAskAstra } from '../../lib/api/hooks';
+import { useAskAstra, useSessionUser } from '../../lib/api/hooks';
 import { useToast } from '../../components/Toast';
 import { useTestContact } from '../../state/testContact';
 import { CustomerTestPanel } from '../../components/CustomerTestPanel';
@@ -23,21 +23,26 @@ interface ChatMessage {
   text: string;
 }
 
-const WELCOME =
-  "Namaste! 🙏 I'm Astra, ShopNova's AI assistant. I can help with orders, refunds, delivery and returns — in English or Hindi. How can I help you today?";
+function welcomeMessage(tenantName?: string): string {
+  const whose = tenantName ? `${tenantName}'s` : 'your';
+  return `Namaste! 🙏 I'm Astra, ${whose} AI assistant. I can help with orders, refunds, delivery and returns — in English or Hindi. How can I help you today?`;
+}
 
 export function AiChatbot() {
-  const [messages, setMessages] = useState<ChatMessage[]>([{ from: 'bot', text: WELCOME }]);
+  const { data: sessionUser } = useSessionUser();
+  const [messages, setMessages] = useState<ChatMessage[]>([{ from: 'bot', text: welcomeMessage() }]);
   const [input, setInput] = useState('');
   const { contact } = useTestContact();
   const ask = useAskAstra();
   const toast = useToast();
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  // Reset the conversation whenever the Topbar's "test as customer" selection changes.
+  // Reset the conversation whenever the Topbar's "test as customer" selection
+  // changes, or once the signed-in tenant's name loads (so the initial welcome —
+  // rendered before that resolves — gets replaced rather than staying generic).
   useEffect(() => {
-    setMessages([{ from: 'bot', text: WELCOME }]);
-  }, [contact?.id]);
+    setMessages([{ from: 'bot', text: welcomeMessage(sessionUser?.tenantName) }]);
+  }, [contact?.id, sessionUser?.tenantName]);
 
   useEffect(() => {
     if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
@@ -50,7 +55,7 @@ export function AiChatbot() {
     setInput('');
 
     ask.mutate(
-      { question: msg, contactId: contact?.id },
+      { question: msg, contactId: contact?.id, channel: 'chat' },
       {
         onSuccess: (res) => {
           const reply = !res.configured
