@@ -118,6 +118,8 @@ export interface AstraAnswer {
   sources: string[];
   ticketRef: string | null;
   clarifying?: boolean;
+  /** IDs of the flow's nodes actually executed for this reply, in order — used by Agent Builder's Test panel to trace the run on canvas. */
+  visitedNodeIds?: string[];
 }
 
 // GET /api/v1/me
@@ -419,7 +421,7 @@ export type { AddFlowNodeDto, MoveFlowNodeDto, SetNextNodeDto } from '@aq/shared
 export type { RuleAction, RuleCondition, RuleConditions, RuleDto } from '@aq/shared';
 
 // GET /api/v1/kb, POST /api/v1/kb, PATCH /api/v1/kb/:id/view
-export type { CreateKbArticleDto } from '@aq/shared';
+export type { CreateKbArticleDto, UpdateKbArticleDto } from '@aq/shared';
 export interface KbArticle {
   id: string;
   title: string;

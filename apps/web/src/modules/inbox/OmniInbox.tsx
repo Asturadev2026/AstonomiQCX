@@ -8,6 +8,7 @@ import {
 } from '../../lib/api/hooks';
 import { useToast } from '../../components/Toast';
 import { EmptyState, ErrorState, LoadingState } from '../../components/states';
+import { renderMarkdownLite } from '../../lib/markdownLite';
 
 /**
  * Omni Inbox — exact port of the prototype's #inbox section (3-pane:
@@ -175,7 +176,7 @@ export function OmniInbox() {
                 <div className={`m ${m.role}`} key={i}>
                   <span className="who">{m.role === 'cust' ? thread.contactName : ROLE_NAME[m.role]}</span>
                   <div className="bub" style={{ whiteSpace: 'pre-line' }}>
-                    {m.text}
+                    {m.role === 'bot' ? renderMarkdownLite(m.text) : m.text}
                   </div>
                   {m.sources && m.sources.length > 0 && (
                     <div className="cap" style={{ margin: '2px 0 0' }}>

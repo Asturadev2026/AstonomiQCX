@@ -45,7 +45,7 @@ const NODE_TEMPLATES: Record<FlowNodeType, Omit<FlowNode, 'id' | 'nextId'>> = {
     badge: 'b-sky',
     title: 'Fetch order details',
     subtitle: 'from Order Management API',
-    config: { source: 'latest_order' },
+    config: { source: 'latest_order', refundWindowDays: 7 },
   },
   ask_question: {
     type: 'ask_question',
@@ -105,7 +105,14 @@ export class AgentFlowService {
       const definition = flow.definition as unknown as AgentFlowDefinition;
       const node = definition.nodes.find((n) => n.id === nodeId);
       if (!node) throw new NotFoundException(`Node ${nodeId} not found in flow ${flowId}`);
-      node.config = { ...node.config, ...config };
+      // class-transformer's @Type() instantiates every declared field on the
+      // incoming DTO, including ones the caller didn't set — those come
+      // through as explicit `undefined` own properties. Spreading that
+      // directly over the existing config would silently overwrite fields
+      // the caller never touched (e.g. wiping fetch_data's `source` when only
+      // `refundWindowDays` was sent), so only defined keys are merged in.
+      const definedConfig = Object.fromEntries(Object.entries(config).filter(([, v]) => v !== undefined));
+      node.config = { ...node.config, ...definedConfig };
 
       const updated = await tx.agentFlow.update({
         where: { id: flowId },

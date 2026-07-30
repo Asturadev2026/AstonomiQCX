@@ -3,6 +3,7 @@ import { useAskAstra, useSessionUser } from '../../lib/api/hooks';
 import { useToast } from '../../components/Toast';
 import { useTestContact } from '../../state/testContact';
 import { CustomerTestPanel } from '../../components/CustomerTestPanel';
+import { renderMarkdownLite } from '../../lib/markdownLite';
 
 /**
  * WhatsApp Bot — exact port of the prototype's #whatsapp section (markup and
@@ -103,7 +104,7 @@ export function WhatsappBot() {
         <div className="wa-body" ref={bodyRef}>
           {messages.map((m, i) => (
             <div key={i} className={`wa-m ${m.dir}`}>
-              {m.text}
+              {m.dir === 'in' ? renderMarkdownLite(m.text) : m.text}
               {i === 0 && showFlow && (
                 <div className="wa-flow">
                   {QUICK_REPLIES.map((qr) => (

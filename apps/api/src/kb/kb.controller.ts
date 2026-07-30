@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Patch, Post, Req } from '@nestjs/common';
 import type { TenantScopedRequest } from '../tenancy/tenant.middleware';
 import { KbService } from './kb.service';
 import { CreateKbArticleDto } from './create-kb-article.dto';
+import { UpdateKbArticleDto } from './update-kb-article.dto';
 
 /**
  * Not guarded yet, matching Contacts/Journey (Guide §7 auth exists but the
@@ -25,5 +26,10 @@ export class KbController {
   @Patch(':id/view')
   incrementView(@Req() req: TenantScopedRequest, @Param('id') id: string) {
     return this.svc.incrementView(req.tenantId, id);
+  }
+
+  @Patch(':id')
+  update(@Req() req: TenantScopedRequest, @Param('id') id: string, @Body() dto: UpdateKbArticleDto) {
+    return this.svc.update(req.tenantId, id, dto);
   }
 }

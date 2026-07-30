@@ -83,6 +83,7 @@ import type {
   ThreadMessage,
   TicketRow,
   UpdateIvrNodeDto,
+  UpdateKbArticleDto,
   WorkforceBoardDto,
   WorkforceRosterDto,
 } from './types';
@@ -544,6 +545,18 @@ export function useIncrementKbView() {
   const queryClient = useQueryClient();
   return useMutation<KbArticle, Error, { id: string }>({
     mutationFn: ({ id }) => patch(`/kb/${id}/view`),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<KbArticle[]>(['kb'], (articles) =>
+        articles?.map((a) => (a.id === updated.id ? updated : a)),
+      );
+    },
+  });
+}
+
+export function useUpdateKbArticle() {
+  const queryClient = useQueryClient();
+  return useMutation<KbArticle, Error, { id: string; payload: UpdateKbArticleDto }>({
+    mutationFn: ({ id, payload }) => patchBody(`/kb/${id}`, payload),
     onSuccess: (updated) => {
       queryClient.setQueryData<KbArticle[]>(['kb'], (articles) =>
         articles?.map((a) => (a.id === updated.id ? updated : a)),

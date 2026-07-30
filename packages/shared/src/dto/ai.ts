@@ -20,4 +20,6 @@ export interface AstraAnswerDto {
   ticketRef: string | null;
   /** true when `answer` is Agent Builder's ask_question clarifying prompt, not a completed answer. */
   clarifying?: boolean;
+  /** IDs of the flow's nodes actually executed for this reply, in order — lets Agent Builder's Test panel highlight the real path on the canvas. Other callers can ignore it. */
+  visitedNodeIds?: string[];
 }

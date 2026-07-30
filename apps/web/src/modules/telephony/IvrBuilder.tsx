@@ -201,15 +201,16 @@ export function IvrBuilder() {
     return (
       <div
         key={key}
-        className="flow-link"
+        className="flow-link-hit"
         onDragOver={(e) => {
           e.preventDefault();
           if (dragOverGap !== key) setDragOverGap(key);
         }}
         onDragLeave={() => setDragOverGap((cur) => (cur === key ? null : cur))}
         onDrop={(e) => handleDrop(e, afterNodeId)}
-        style={isOver ? { background: 'var(--blue)', width: 4, borderRadius: 2 } : undefined}
-      />
+      >
+        <span className="flow-link" style={isOver ? { background: 'var(--blue)', width: 4, borderRadius: 2 } : undefined} />
+      </div>
     );
   }
 

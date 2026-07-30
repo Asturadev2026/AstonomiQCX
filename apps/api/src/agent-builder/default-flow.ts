@@ -18,8 +18,8 @@ export const DEFAULT_FLOW_DEFINITION: AgentFlowDefinition = {
       icon: '🧠',
       badge: 'b-indigo',
       title: 'Detect intent',
-      subtitle: 'refund · return · track · other',
-      config: { intents: ['refund', 'return', 'track', 'other'] },
+      subtitle: 'refund · return · track · human · other',
+      config: { intents: ['refund', 'return', 'track', 'human', 'other'] },
     },
     {
       id: 'fetch_data',
@@ -28,7 +28,7 @@ export const DEFAULT_FLOW_DEFINITION: AgentFlowDefinition = {
       badge: 'b-sky',
       title: 'Fetch order details',
       subtitle: 'from Order Management API',
-      config: { source: 'latest_order' },
+      config: { source: 'latest_order', refundWindowDays: 7 },
     },
     {
       id: 'ask_question',

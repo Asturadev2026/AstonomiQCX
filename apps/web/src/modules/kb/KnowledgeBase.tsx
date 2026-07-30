@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
-import { useCreateKbArticle, useIncrementKbView, useKbArticles } from '../../lib/api/hooks';
+import { useMemo, useRef, useState } from 'react';
+import { useCreateKbArticle, useIncrementKbView, useKbArticles, useUpdateKbArticle } from '../../lib/api/hooks';
 import { ErrorState, LoadingState } from '../../components/states';
 import { useToast } from '../../components/Toast';
 import { Modal } from '../../components/Modal';
+import { applyMarkdownFormat, renderMarkdownLite, stripMarkdownLite, type MarkdownFormatAction } from '../../lib/markdownLite';
 import type { KbArticle } from '../../lib/api/types';
 
 /**
@@ -14,6 +15,9 @@ import type { KbArticle } from '../../lib/api/types';
  * "Add article" is a real POST (a small form, not the prototype's one-click
  * fake draft) since the backend already supports it for real. Clicking an
  * article really increments its view count via a new PATCH /kb/:id/view.
+ * Editing (PATCH /kb/:id) and lightweight markdown formatting (bold/italic/
+ * lists, rendered as real elements — not dangerouslySetInnerHTML) reuse the
+ * same form for both create and edit.
  */
 
 const CATEGORY_ICONS: Record<string, string> = {
@@ -56,18 +60,39 @@ function truncate(text: string, max = 130): string {
   return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
 }
 
+const FIELD_STYLE: React.CSSProperties = {
+  width: '100%',
+  background: 'var(--panel)',
+  border: '1px solid var(--line2)',
+  borderRadius: 9,
+  padding: 11,
+  fontSize: 13,
+  outline: 'none',
+  color: 'var(--text)',
+};
+
+const TOOLBAR_BUTTONS: { action: MarkdownFormatAction; label: string; title: string }[] = [
+  { action: 'bold', label: 'B', title: 'Bold' },
+  { action: 'italic', label: 'I', title: 'Italic' },
+  { action: 'ul', label: '• List', title: 'Bullet list' },
+  { action: 'ol', label: '1. List', title: 'Numbered list' },
+];
+
 export function KnowledgeBase() {
   const { data, isLoading, error, refetch } = useKbArticles();
   const createArticle = useCreateKbArticle();
+  const updateArticle = useUpdateKbArticle();
   const incrementView = useIncrementKbView();
   const toast = useToast();
 
   const [activeCat, setActiveCat] = useState('all');
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [category, setCategory] = useState('');
   const [viewingArticleId, setViewingArticleId] = useState<string | null>(null);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
 
   const categories = useMemo(() => {
     if (!data) return [];
@@ -91,26 +116,78 @@ export function KnowledgeBase() {
 
   const viewingArticle = viewingArticleId ? data.find((a) => a.id === viewingArticleId) ?? null : null;
 
+  function resetForm() {
+    setTitle('');
+    setBody('');
+    setCategory('');
+    setEditingId(null);
+    setShowForm(false);
+  }
+
+  function startCreate() {
+    if (showForm && !editingId) {
+      resetForm();
+      return;
+    }
+    setTitle('');
+    setBody('');
+    setCategory('');
+    setEditingId(null);
+    setShowForm(true);
+  }
+
+  function startEdit(article: KbArticle, e: React.MouseEvent) {
+    e.stopPropagation();
+    setTitle(article.title);
+    setBody(article.body);
+    setCategory(article.category ?? '');
+    setEditingId(article.id);
+    setShowForm(true);
+  }
+
+  function applyFormat(action: MarkdownFormatAction) {
+    const el = bodyRef.current;
+    if (!el) return;
+    const result = applyMarkdownFormat(body, el.selectionStart, el.selectionEnd, action);
+    setBody(result.text);
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(result.selectionStart, result.selectionEnd);
+    });
+  }
+
   function submitArticle() {
     if (!title.trim() || !body.trim()) {
       toast('Title and body are required');
       return;
     }
-    createArticle.mutate(
-      { title: title.trim(), body: body.trim(), category: category.trim() || undefined },
-      {
-        onSuccess: () => {
-          toast('New article created ✓');
-          setTitle('');
-          setBody('');
-          setCategory('');
-          setShowForm(false);
-          setActiveCat('all');
+    const payload = { title: title.trim(), body: body.trim(), category: category.trim() || undefined };
+
+    if (editingId) {
+      updateArticle.mutate(
+        { id: editingId, payload },
+        {
+          onSuccess: () => {
+            toast('Article updated ✓');
+            resetForm();
+          },
+          onError: (err) => toast(err instanceof Error ? err.message : 'Could not update article'),
         },
-        onError: (err) => toast(err instanceof Error ? err.message : 'Could not create article'),
+      );
+      return;
+    }
+
+    createArticle.mutate(payload, {
+      onSuccess: () => {
+        toast('New article created ✓');
+        resetForm();
+        setActiveCat('all');
       },
-    );
+      onError: (err) => toast(err instanceof Error ? err.message : 'Could not create article'),
+    });
   }
+
+  const isSaving = editingId ? updateArticle.isPending : createArticle.isPending;
 
   return (
     <>
@@ -121,7 +198,7 @@ export function KnowledgeBase() {
             Astra answers customers using these articles — keep them fresh
           </div>
         </div>
-        <button className="btn btn-g" style={{ marginLeft: 'auto' }} onClick={() => setShowForm((s) => !s)}>
+        <button className="btn btn-g" style={{ marginLeft: 'auto' }} onClick={startCreate}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 5v14M5 12h14" />
           </svg>
@@ -131,24 +208,13 @@ export function KnowledgeBase() {
 
       {showForm && (
         <div className="card" style={{ marginBottom: 16 }}>
-          <h3>New article</h3>
-          <div className="cap">This is real — Astra can use it as soon as it's saved</div>
+          <h3>{editingId ? 'Edit article' : 'New article'}</h3>
+          <div className="cap">
+            {editingId ? "Changes save straight to the live article — Astra uses the new text right away" : "This is real — Astra can use it as soon as it's saved"}
+          </div>
           <div className="cop-block" style={{ marginTop: 4 }}>
             <div className="lbl">Title</div>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              style={{
-                width: '100%',
-                background: 'var(--panel)',
-                border: '1px solid var(--line2)',
-                borderRadius: 9,
-                padding: 11,
-                fontSize: 13,
-                outline: 'none',
-                color: 'var(--text)',
-              }}
-            />
+            <input value={title} onChange={(e) => setTitle(e.target.value)} style={FIELD_STYLE} />
           </div>
           <div className="cop-block">
             <div className="lbl">Category</div>
@@ -156,45 +222,41 @@ export function KnowledgeBase() {
               value={category}
               onChange={(e) => setCategory(e.target.value)}
               placeholder="e.g. Delivery, Returns, Payments"
-              style={{
-                width: '100%',
-                background: 'var(--panel)',
-                border: '1px solid var(--line2)',
-                borderRadius: 9,
-                padding: 11,
-                fontSize: 13,
-                outline: 'none',
-                color: 'var(--text)',
-              }}
+              style={FIELD_STYLE}
             />
           </div>
           <div className="cop-block">
             <div className="lbl">Body</div>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+              {TOOLBAR_BUTTONS.map((b) => (
+                <button
+                  key={b.action}
+                  type="button"
+                  title={b.title}
+                  onClick={() => applyFormat(b.action)}
+                  className="btn btn-o"
+                  style={{ padding: '4px 10px', fontSize: 12, fontWeight: b.action === 'bold' ? 700 : 400, fontStyle: b.action === 'italic' ? 'italic' : 'normal' }}
+                >
+                  {b.label}
+                </button>
+              ))}
+            </div>
             <textarea
+              ref={bodyRef}
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              style={{
-                width: '100%',
-                background: 'var(--panel)',
-                border: '1px solid var(--line2)',
-                borderRadius: 9,
-                padding: 11,
-                fontSize: 13,
-                height: 100,
-                resize: 'none',
-                outline: 'none',
-                color: 'var(--text)',
-              }}
+              placeholder={'Select text and click a formatting button, or type markdown directly — e.g. **bold**, - bullet item'}
+              style={{ ...FIELD_STYLE, height: 140, resize: 'vertical' }}
             />
           </div>
-          <button
-            className="btn btn-g"
-            onClick={submitArticle}
-            disabled={createArticle.isPending}
-            style={{ width: '100%', justifyContent: 'center', padding: 12 }}
-          >
-            Save article
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-g" onClick={submitArticle} disabled={isSaving} style={{ flex: 1, justifyContent: 'center', padding: 12 }}>
+              {editingId ? 'Save changes' : 'Save article'}
+            </button>
+            <button className="btn btn-o" onClick={resetForm} style={{ padding: 12 }}>
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 
@@ -221,7 +283,7 @@ export function KnowledgeBase() {
                 </div>
                 <div style={{ flex: 1 }}>
                   <div className="ka-t">{a.title}</div>
-                  <div className="ka-d">{truncate(a.body)}</div>
+                  <div className="ka-d">{truncate(stripMarkdownLite(a.body))}</div>
                   <div className="ka-m">
                     <span>📁 {a.category ?? 'Uncategorised'}</span>
                     <span>👁 {formatViews(a.views)}</span>
@@ -229,6 +291,13 @@ export function KnowledgeBase() {
                     <span>🕒 {timeAgo(a.updatedAt)}</span>
                   </div>
                 </div>
+                <button
+                  className="btn btn-o"
+                  onClick={(e) => startEdit(a, e)}
+                  style={{ padding: '4px 10px', fontSize: 12, alignSelf: 'flex-start' }}
+                >
+                  Edit
+                </button>
               </div>
             ))}
           </div>
@@ -242,7 +311,7 @@ export function KnowledgeBase() {
             <span>👁 {formatViews(viewingArticle.views)}</span>
             <span>🕒 {timeAgo(viewingArticle.updatedAt)}</span>
           </div>
-          <div style={{ fontSize: 13.5, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{viewingArticle.body}</div>
+          <div style={{ fontSize: 13.5, lineHeight: 1.7 }}>{renderMarkdownLite(viewingArticle.body)}</div>
         </Modal>
       )}
     </>

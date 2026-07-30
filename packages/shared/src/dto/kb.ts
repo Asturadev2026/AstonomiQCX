@@ -7,6 +7,13 @@ export interface CreateKbArticleDto {
   language?: string;
 }
 
+export interface UpdateKbArticleDto {
+  title?: string;
+  body?: string;
+  category?: string;
+  language?: string;
+}
+
 export interface KbArticleDto {
   id: string;
   title: string;
