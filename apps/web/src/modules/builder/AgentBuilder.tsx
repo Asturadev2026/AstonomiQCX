@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   useAddFlowNode,
   useAgentFlow,
+  useAskAstra,
   useDeleteFlowNode,
   useMoveFlowNode,
   usePublishFlow,
@@ -10,6 +11,8 @@ import {
 } from '../../lib/api/hooks';
 import { ErrorState, LoadingState } from '../../components/states';
 import { useToast } from '../../components/Toast';
+import { useTestContact } from '../../state/testContact';
+import { renderMarkdownLite } from '../../lib/markdownLite';
 import type { FlowNode, FlowNodeConfig, FlowNodeType } from '../../lib/api/types';
 
 /**
@@ -21,9 +24,11 @@ import type { FlowNode, FlowNodeConfig, FlowNodeType } from '../../lib/api/types
  * WhatsApp, Voice) — editing and publishing a block here changes Astra's
  * actual replies, not just a mock.
  *
- * The "Test" button stays a toast (Guide scope note): real end-to-end
- * testing of this flow already happens live via the Chatbot/WhatsApp/Voice
- * screens, which all run through this same published flow.
+ * "▶ Test" opens a real conversation against this exact flow (same
+ * /ai/ask the Chatbot widget calls, using the Topbar's "Test as" contact) —
+ * not a mock. FlowExecutionService additionally reports back which node ids
+ * it actually visited for that reply, so the canvas highlights the real
+ * path a message took — Trigger through whichever block answered.
  *
  * Drag-and-drop uses the native HTML5 DnD API (no library) — palette blocks
  * carry a 'x-new-node-type' payload, canvas blocks carry 'x-move-node-id';
@@ -59,7 +64,7 @@ function explanation(node: FlowNode): string {
     case 'detect_intent':
       return "Astra classifies the customer's message into one of the intents below, using whichever LLM provider is configured.";
     case 'fetch_data':
-      return "Pulls the customer's most recent order (status, amount, delivery date) when the contact is known.";
+      return "Pulls the customer's recent orders (status, amount, order date) when the contact is known. For a refund intent, orders are checked against the eligibility window below instead of asking the AI to guess.";
     case 'ask_question':
       return 'Sent to the customer as this turn\'s reply when the intent is ambiguous — their next message is classified fresh.';
     case 'send_reply':
@@ -67,6 +72,11 @@ function explanation(node: FlowNode): string {
     case 'human_handoff':
       return 'When Astra escalates, a real ticket is raised so a human agent can take over with full context.';
   }
+}
+
+interface TestMessage {
+  from: 'bot' | 'user';
+  text: string;
 }
 
 export function AgentBuilder() {
@@ -77,6 +87,8 @@ export function AgentBuilder() {
   const deleteNode = useDeleteFlowNode();
   const moveNode = useMoveFlowNode();
   const setNextNode = useSetNextFlowNode();
+  const askTest = useAskAstra();
+  const { contact: testContact } = useTestContact();
   const toast = useToast();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -84,7 +96,13 @@ export function AgentBuilder() {
   const [question, setQuestion] = useState('');
   const [optionsText, setOptionsText] = useState('');
   const [condition, setCondition] = useState('');
+  const [refundWindowDays, setRefundWindowDays] = useState('7');
   const [dragOverGap, setDragOverGap] = useState<string | null>(null);
+  const [showTest, setShowTest] = useState(false);
+  const [testMessages, setTestMessages] = useState<TestMessage[]>([]);
+  const [testInput, setTestInput] = useState('');
+  const [tracedIds, setTracedIds] = useState<string[]>([]);
+  const testBodyRef = useRef<HTMLDivElement>(null);
 
   const nodes = data?.definition.nodes ?? [];
   const selected = nodes.find((n) => n.id === selectedId) ?? nodes[1] ?? nodes[0] ?? null;
@@ -95,7 +113,12 @@ export function AgentBuilder() {
     setQuestion(selected.config.question ?? '');
     setOptionsText((selected.config.options ?? []).join(', '));
     setCondition(selected.config.condition ?? '');
+    setRefundWindowDays(String(selected.config.refundWindowDays ?? 7));
   }, [selected?.id]);
+
+  useEffect(() => {
+    if (testBodyRef.current) testBodyRef.current.scrollTop = testBodyRef.current.scrollHeight;
+  }, [testMessages, askTest.isPending]);
 
   if (isLoading) return <LoadingState />;
   if (error || !data) return <ErrorState error={error} retry={() => void refetch()} />;
@@ -109,6 +132,10 @@ export function AgentBuilder() {
       config.options = parseList(optionsText);
     }
     if (selected.type === 'human_handoff') config.condition = condition;
+    if (selected.type === 'fetch_data') {
+      config.source = 'latest_order';
+      config.refundWindowDays = Number(refundWindowDays) || 7;
+    }
 
     updateNode.mutate(
       { flowId: data.id, nodeId: selected.id, config },
@@ -117,6 +144,34 @@ export function AgentBuilder() {
         onError: (err) => toast(err instanceof Error ? err.message : 'Could not save block'),
       },
     );
+  }
+
+  function sendTest(text?: string) {
+    const msg = (text ?? testInput).trim();
+    if (!msg || askTest.isPending) return;
+    setTestMessages((m) => [...m, { from: 'user', text: msg }]);
+    setTestInput('');
+    askTest.mutate(
+      { question: msg, contactId: testContact?.id, channel: 'chat' },
+      {
+        onSuccess: (res) => {
+          const reply = !res.configured
+            ? "I'm not connected to an AI provider yet — ask your developer to add an API key."
+            : res.escalate
+              ? `I'm not sure how to help with that — I've raised ticket ${res.ticketRef} and a human agent will take it from here.`
+              : res.answer ?? '';
+          setTestMessages((m) => [...m, { from: 'bot', text: reply }]);
+          setTracedIds(res.visitedNodeIds ?? []);
+        },
+        onError: (err) => toast(err instanceof Error ? err.message : 'Could not reach Astra'),
+      },
+    );
+  }
+
+  function resetTest() {
+    setTestMessages([]);
+    setTestInput('');
+    setTracedIds([]);
   }
 
   function publish() {
@@ -186,15 +241,16 @@ export function AgentBuilder() {
     return (
       <div
         key={key}
-        className="flow-link"
+        className="flow-link-hit"
         onDragOver={(e) => {
           e.preventDefault();
           if (dragOverGap !== key) setDragOverGap(key);
         }}
         onDragLeave={() => setDragOverGap((cur) => (cur === key ? null : cur))}
         onDrop={(e) => handleDrop(e, afterNodeId)}
-        style={isOver ? { background: 'var(--blue)', width: 4, borderRadius: 2 } : undefined}
-      />
+      >
+        <span className="flow-link" style={isOver ? { background: 'var(--blue)', width: 4, borderRadius: 2 } : undefined} />
+      </div>
     );
   }
 
@@ -211,7 +267,7 @@ export function AgentBuilder() {
             {data.status === 'published' ? 'live' : 'draft'}
           </div>
         </div>
-        <button className="btn btn-o" style={{ marginLeft: 'auto', marginRight: 8 }} onClick={() => toast('Test conversation started ✓')}>
+        <button className="btn btn-o" style={{ marginLeft: 'auto', marginRight: 8 }} onClick={() => setShowTest((s) => !s)}>
           ▶ Test
         </button>
         <button className="btn btn-g" onClick={publish} disabled={publishFlow.isPending}>
@@ -236,23 +292,32 @@ export function AgentBuilder() {
         </div>
         <div className="canvas" id="canvas">
           {renderGap(null, 'gap-start')}
-          {nodes.map((n) => (
-            <div key={n.id}>
-              <div
-                className={`flow-node ${selected?.id === n.id ? 'sel' : ''}`}
-                draggable
-                onDragStart={(e) => e.dataTransfer.setData(MOVE_NODE_ID, n.id)}
-                onClick={() => setSelectedId(n.id)}
-              >
-                <div className="fn-h">
-                  <span className={`fn-ic ${n.badge}`}>{n.icon}</span>
-                  {n.title}
+          {nodes.map((n) => {
+            const traceStep = tracedIds.indexOf(n.id);
+            const isLastTraced = traceStep >= 0 && traceStep === tracedIds.length - 1;
+            return (
+              <div key={n.id}>
+                <div
+                  className={`flow-node ${selected?.id === n.id ? 'sel' : ''} ${traceStep >= 0 ? 'traced' : ''}`}
+                  draggable
+                  onDragStart={(e) => e.dataTransfer.setData(MOVE_NODE_ID, n.id)}
+                  onClick={() => setSelectedId(n.id)}
+                >
+                  {traceStep >= 0 && (
+                    <span className="trace-badge" title={isLastTraced ? 'Answered here' : `Step ${traceStep + 1}`}>
+                      {isLastTraced ? '★' : traceStep + 1}
+                    </span>
+                  )}
+                  <div className="fn-h">
+                    <span className={`fn-ic ${n.badge}`}>{n.icon}</span>
+                    {n.title}
+                  </div>
+                  <div className="fn-d">{n.subtitle}</div>
                 </div>
-                <div className="fn-d">{n.subtitle}</div>
+                {renderGap(n.id, `gap-${n.id}`)}
               </div>
-              {renderGap(n.id, `gap-${n.id}`)}
-            </div>
-          ))}
+            );
+          })}
         </div>
         <div className="card cfg" id="nodeCfg">
           {selected && (
@@ -282,6 +347,21 @@ export function AgentBuilder() {
                 <div className="cfg-row">
                   <label>Intents (comma separated)</label>
                   <input value={intentsText} onChange={(e) => setIntentsText(e.target.value)} />
+                </div>
+              )}
+
+              {selected.type === 'fetch_data' && (
+                <div className="cfg-row">
+                  <label>Refund eligibility window (days)</label>
+                  <input
+                    value={refundWindowDays}
+                    onChange={(e) => setRefundWindowDays(e.target.value.replace(/[^0-9]/g, ''))}
+                    inputMode="numeric"
+                  />
+                  <div className="cap" style={{ marginTop: 4 }}>
+                    An order only counts as refund-eligible if it's delivered and within this many days — used when
+                    a customer asks for a refund.
+                  </div>
                 </div>
               )}
 
@@ -339,6 +419,74 @@ export function AgentBuilder() {
           )}
         </div>
       </div>
+
+      {showTest && (
+        <div
+          className="cb-frame"
+          style={{ position: 'fixed', bottom: 24, right: 24, width: 340, zIndex: 50, boxShadow: 'var(--sh-lg), 0 0 0 1px var(--line)' }}
+        >
+          <div className="cb-top">
+            <div className="bavatar">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} width={20}>
+                <path d="M12 2l2 5 5 .5-4 3.5 1 5-4-2.5L8 16l1-5-4-3.5 5-.5z" />
+              </svg>
+            </div>
+            <div style={{ flex: 1 }}>
+              <b>Test this agent</b>
+              <small>
+                <span className="dot" /> {testContact ? `as ${testContact.name}` : 'as Anonymous'}
+              </small>
+            </div>
+            <button
+              onClick={resetTest}
+              title="Reset conversation"
+              style={{ background: 'none', border: 'none', color: '#fff', opacity: 0.85, cursor: 'pointer', fontSize: 12, marginRight: 6 }}
+            >
+              Reset
+            </button>
+            <button
+              onClick={() => setShowTest(false)}
+              aria-label="Close"
+              style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="cb-body" ref={testBodyRef} style={{ height: 300 }}>
+            {testMessages.length === 0 && (
+              <div className="cap" style={{ textAlign: 'center', margin: 'auto' }}>
+                Type a message below — it runs through this exact flow for real, and the canvas will highlight
+                which blocks it visited.
+              </div>
+            )}
+            {testMessages.map((m, i) => (
+              <div key={i} className={`cb-m ${m.from}`}>
+                {m.from === 'bot' ? renderMarkdownLite(m.text) : m.text}
+              </div>
+            ))}
+            {askTest.isPending && (
+              <div className="typing">
+                <i /> <i /> <i />
+              </div>
+            )}
+          </div>
+
+          <div className="cb-input">
+            <input
+              placeholder="Type a test message…"
+              value={testInput}
+              onChange={(e) => setTestInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && sendTest()}
+            />
+            <button className="send" onClick={() => sendTest()}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }

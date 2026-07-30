@@ -3,6 +3,7 @@ import { useAskAstra, useSessionUser } from '../../lib/api/hooks';
 import { useToast } from '../../components/Toast';
 import { useTestContact } from '../../state/testContact';
 import { CustomerTestPanel } from '../../components/CustomerTestPanel';
+import { renderMarkdownLite } from '../../lib/markdownLite';
 
 /**
  * AI Chatbot — exact port of the prototype's #chatbot section (markup and
@@ -93,7 +94,7 @@ export function AiChatbot() {
         <div className="cb-body" ref={bodyRef}>
           {messages.map((m, i) => (
             <div key={i} className={`cb-m ${m.from}`}>
-              {m.text}
+              {m.from === 'bot' ? renderMarkdownLite(m.text) : m.text}
             </div>
           ))}
           {ask.isPending && (

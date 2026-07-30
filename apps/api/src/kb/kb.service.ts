@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { getPrisma, withTenant, type KbArticle } from '@aq/db';
-import type { CreateKbArticleDto } from '@aq/shared';
+import type { CreateKbArticleDto, UpdateKbArticleDto } from '@aq/shared';
 
 @Injectable()
 export class KbService {
@@ -23,6 +23,16 @@ export class KbService {
   list(tenantId: string): Promise<KbArticle[]> {
     return withTenant(this.prisma, tenantId, (tx) =>
       tx.kbArticle.findMany({ where: { status: 'published' }, orderBy: { createdAt: 'desc' } }),
+    );
+  }
+
+  /** Real edits — unlike incrementView, this SHOULD bump updatedAt via Prisma's @updatedAt. */
+  update(tenantId: string, id: string, dto: UpdateKbArticleDto): Promise<KbArticle> {
+    return withTenant(this.prisma, tenantId, (tx) =>
+      tx.kbArticle.update({
+        where: { id },
+        data: { title: dto.title, body: dto.body, category: dto.category, language: dto.language },
+      }),
     );
   }
 

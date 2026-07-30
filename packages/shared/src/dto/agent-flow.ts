@@ -11,6 +11,8 @@ export interface FlowNodeConfig {
   options?: string[];
   /** fetch_data: what to fetch — only 'latest_order' is implemented. */
   source?: string;
+  /** fetch_data: for refund intent — an order counts as refund-eligible only if delivered within this many days. */
+  refundWindowDays?: number;
   /** human_handoff: shown for context; escalation logic itself is fixed. */
   condition?: string;
 }

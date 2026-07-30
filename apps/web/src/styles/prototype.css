@@ -320,11 +320,22 @@
   .flow-node{background:#fff;border:1.5px solid var(--line2);border-radius:12px;padding:13px 15px;max-width:300px;margin:0 auto 8px;box-shadow:var(--sh-sm);cursor:pointer;transition:.15s;position:relative}
   .flow-node:hover{border-color:var(--blue);box-shadow:var(--sh)}
   .flow-node.sel{border-color:var(--blue);box-shadow:0 0 0 4px var(--blue-l)}
+  /* .traced marks a block the last test message actually visited (Agent Builder's
+     Test panel) — green rather than .sel's blue so "this really ran" reads
+     distinctly from "this is just selected for editing". */
+  .flow-node.traced{border-color:var(--green);box-shadow:0 0 0 3px var(--green-l)}
+  .trace-badge{position:absolute;top:-9px;right:-9px;width:20px;height:20px;border-radius:50%;background:var(--green);color:#fff;font-size:10.5px;font-weight:700;display:grid;place-items:center;box-shadow:var(--sh-sm)}
   .flow-node .fn-h{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600}
   .flow-node .fn-ic{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;flex:0 0 auto}
   .flow-node .fn-d{font-size:11.5px;color:var(--muted);margin-top:6px;padding-left:35px}
-  .flow-link{width:2px;height:22px;background:var(--line2);margin:0 auto;position:relative}
-  .flow-link::after{content:"";position:absolute;bottom:-1px;left:-3px;border:4px solid transparent;border-top-color:var(--line2)}
+  /* .flow-link-hit is the actual drag/drop target — full column width and a
+     generous height, so a real mouse cursor can land on it. .flow-link is
+     just the thin visual line inside it; the original 2px-wide div WAS the
+     drop target, which was unusably small for real dragging (fine for the
+     static prototype this was ported from, where it was purely decorative). */
+  .flow-link-hit{width:100%;height:30px;display:flex;align-items:center;justify-content:center;position:relative}
+  .flow-link{display:block;width:2px;height:22px;background:var(--line2)}
+  .flow-link-hit::after{content:"";position:absolute;bottom:2px;left:50%;margin-left:-4px;border:4px solid transparent;border-top-color:var(--line2)}
   .cfg .cfg-row{margin-bottom:14px} .cfg label{font-size:11.5px;font-weight:600;display:block;margin-bottom:6px}
   .cfg input,.cfg select,.cfg textarea{width:100%;background:var(--panel);border:1px solid var(--line2);border-radius:9px;padding:9px 11px;font-size:12.5px;color:var(--text);outline:none}
   .cfg input:focus,.cfg textarea:focus,.cfg select:focus{border-color:var(--blue);background:#fff}

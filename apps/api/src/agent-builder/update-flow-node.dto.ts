@@ -1,4 +1,4 @@
-import { IsArray, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { IsArray, IsInt, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import type { FlowNodeConfig, UpdateFlowNodeDto as UpdateFlowNodeDtoShape } from '@aq/shared';
 
@@ -7,6 +7,7 @@ class FlowNodeConfigInput implements FlowNodeConfig {
   @IsOptional() @IsString() question?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) options?: string[];
   @IsOptional() @IsString() source?: string;
+  @IsOptional() @IsInt() @Min(0) refundWindowDays?: number;
   @IsOptional() @IsString() condition?: string;
 }
 

@@ -27,6 +27,29 @@ function normalizeRef(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+// Order.status is free-form (Guide's convention: delivered | in_transit | refunded | ...) —
+// these two are the only statuses that permanently rule out a refund regardless of age.
+const NEVER_REFUNDABLE_STATUSES = new Set(['refunded', 'cancelled']);
+
+function isRefundEligible(order: Order, windowDays: number): boolean {
+  if (order.status && NEVER_REFUNDABLE_STATUSES.has(order.status)) return false;
+  if (order.status !== 'delivered') return false;
+  const daysSinceOrder = (Date.now() - order.createdAt.getTime()) / 86_400_000;
+  return daysSinceOrder <= windowDays;
+}
+
+function ineligibleReason(order: Order, windowDays: number): string {
+  if (order.status === 'refunded') return 'already refunded';
+  if (order.status === 'cancelled') return 'order cancelled';
+  if (order.status !== 'delivered') return `not yet delivered (currently ${order.status ?? 'unknown'})`;
+  return `delivered more than ${windowDays} days ago`;
+}
+
+function formatOrderLine(order: Order, reason?: string): string {
+  const base = `- ${order.extRef ?? order.id}: "${order.description ?? 'item'}" — ₹${order.amount ?? '?'}`;
+  return reason ? `${base} (${reason})` : base;
+}
+
 /**
  * Real node-by-node executor for a published Agent Builder flow (Guide
  * §1.3/§12) — walks the definition's nodes and does each one's actual job,
@@ -47,13 +70,13 @@ export class FlowExecutionService {
 
   async run(tenantId: string, question: string, options: RunOptions = {}): Promise<AstraAnswerDto> {
     if (!isConfigured()) {
-      return { answer: null, escalate: false, configured: false, sources: [], ticketRef: null };
+      return { answer: null, escalate: false, configured: false, sources: [], ticketRef: null, visitedNodeIds: [] };
     }
 
     const flow = await this.flows.findPublishedChatFlow(tenantId);
     if (!flow) {
       // Caller (AiService) should have checked first — fall back safely rather than 500.
-      return { answer: null, escalate: false, configured: false, sources: [], ticketRef: null };
+      return { answer: null, escalate: false, configured: false, sources: [], ticketRef: null, visitedNodeIds: [] };
     }
 
     const definition = flow.definition as unknown as AgentFlowDefinition;
@@ -67,9 +90,14 @@ export class FlowExecutionService {
     const byId = new Map(definition.nodes.map((n) => [n.id, n]));
     let node: FlowNode | undefined = definition.nodes[0];
     let steps = 0;
+    // Every node actually reached, in order — exists purely so Agent Builder's
+    // Test panel can highlight the real path on the canvas; no other caller
+    // (Chatbot/WhatsApp/Voice) needs to read this field.
+    const visitedNodeIds: string[] = [];
 
     try {
       while (node && steps++ < definition.nodes.length * 2) {
+        visitedNodeIds.push(node.id);
         switch (node.type) {
           case 'trigger':
             break; // entry point only
@@ -77,13 +105,27 @@ export class FlowExecutionService {
           case 'detect_intent': {
             const intents = node.config.intents ?? ['other'];
             // A reply that's essentially just an order ref (e.g. answering "which
-            // order?" with "zk6") is unambiguously about tracking — classify it
-            // directly rather than asking the LLM, which tends to call a ref-only
-            // reply "other" and re-trigger ask_question's own clarifying question,
-            // ignoring the answer the customer just gave.
-            if (intents.includes('track') && /zk\d+/.test(normalizeRef(question))) {
-              ctx.intent = 'track';
-              break;
+            // order?" with "zk6") is unambiguous — but only once we know what that
+            // specific order's status actually is: an in-transit order means the
+            // customer is continuing a tracking conversation, a delivered one means
+            // they're continuing a return one (see the "which order to return?"
+            // question below). Classify from the order itself rather than asking
+            // the LLM, which has no memory of which clarifying question was just
+            // asked and tends to call a bare ref-only reply "other".
+            const refOnlyMatch = normalizeRef(question);
+            if (/zk\d+/.test(refOnlyMatch) && options.contactId && (intents.includes('track') || intents.includes('return'))) {
+              const recentOrders = await withTenant(this.prisma, tenantId, (tx) =>
+                tx.order.findMany({ where: { contactId: options.contactId }, orderBy: { createdAt: 'desc' }, take: 5 }),
+              );
+              const matched = recentOrders.find((o) => o.extRef && refOnlyMatch.includes(normalizeRef(o.extRef)));
+              if (matched?.status === 'delivered' && intents.includes('return')) {
+                ctx.intent = 'return';
+                break;
+              }
+              if (intents.includes('track')) {
+                ctx.intent = 'track';
+                break;
+              }
             }
             const prompt =
               `Classify the customer's message into exactly one of these intents: ${intents.join(', ')}. ` +
@@ -117,12 +159,53 @@ export class FlowExecutionService {
                 sources: [],
                 ticketRef: null,
                 clarifying: true,
+                visitedNodeIds,
               };
             }
             break;
           }
 
           case 'send_reply': {
+            // An explicit "talk to a human" request is unambiguous — raise the
+            // ticket immediately rather than routing it through the generic
+            // ESCALATE-if-the-LLM-can't-answer path below, which is meant for
+            // questions the KB doesn't cover, not a customer who already knows
+            // they want a person.
+            if (ctx.intent === 'human') {
+              const ticket = await this.tickets.create(tenantId, null, {
+                subject: 'Customer asked to speak with an agent',
+                description: question,
+                category: 'agent_flow_handoff',
+                contactId: options.contactId,
+                conversationId: options.conversationId,
+              });
+              return {
+                answer: `Of course — I've raised ticket ${ticket.extRef} and one of our agents will contact you soon.`,
+                escalate: false,
+                configured: true,
+                sources: [],
+                ticketRef: ticket.extRef,
+                visitedNodeIds,
+              };
+            }
+
+            // Refund eligibility is a real, deterministic check against the
+            // customer's actual orders — not left to the LLM to guess at —
+            // since a wrong "yes you can refund that" is a real-money mistake.
+            // Every other intent still falls through to the LLM-grounded path
+            // below.
+            if (ctx.intent === 'refund') {
+              return this.buildRefundEligibilityReply(definition, ctx.orders ?? [], visitedNodeIds);
+            }
+
+            // A return needs an actual delivered order and a human to arrange
+            // pickup — check eligibility for real, ask which order when more
+            // than one qualifies, and raise the ticket once a single order is
+            // resolved, rather than leaving any of that to the LLM to guess.
+            if (ctx.intent === 'return') {
+              return this.buildReturnReply(tenantId, ctx.orders ?? [], question, options, visitedNodeIds);
+            }
+
             // Resolve a mentioned order ref up front (case/hyphen-insensitive) so a
             // reply like "zk6" reliably matches "ZK-6" — both for skipping the
             // ambiguity check below and for narrowing what the LLM sees, so it can't
@@ -148,6 +231,7 @@ export class FlowExecutionService {
                 sources: [],
                 ticketRef: null,
                 clarifying: true,
+                visitedNodeIds,
               };
             }
 
@@ -204,6 +288,7 @@ export class FlowExecutionService {
               configured: true,
               sources: articles.map((a) => a.title),
               ticketRef,
+              visitedNodeIds,
             };
           }
 
@@ -216,13 +301,127 @@ export class FlowExecutionService {
       }
 
       // Flow had no send_reply node — nothing to say.
-      return { answer: null, escalate: false, configured: true, sources: [], ticketRef: null };
+      return { answer: null, escalate: false, configured: true, sources: [], ticketRef: null, visitedNodeIds };
     } catch (err) {
       if (err instanceof LlmAuthError) {
         this.logger.warn(err.message);
-        return { answer: null, escalate: false, configured: false, sources: [], ticketRef: null };
+        return { answer: null, escalate: false, configured: false, sources: [], ticketRef: null, visitedNodeIds };
       }
       throw err;
     }
+  }
+
+  /**
+   * Real, deterministic refund-eligibility answer — checks the customer's
+   * actual orders against the fetch_data block's configured refund window
+   * (Agent Builder → Fetch order details → "Refund eligibility window") and
+   * NEVER-refundable statuses, rather than letting the LLM freely decide.
+   * Handles the zero-orders case explicitly instead of leaving the LLM to
+   * improvise with no context.
+   */
+  private buildRefundEligibilityReply(
+    definition: AgentFlowDefinition,
+    orders: Order[],
+    visitedNodeIds: string[],
+  ): AstraAnswerDto {
+    if (orders.length === 0) {
+      return {
+        answer:
+          "I don't see any orders on your account, so there's nothing to check for a refund. If you placed the order with a different phone number or email, let me know and I'll look again.",
+        escalate: false,
+        configured: true,
+        sources: [],
+        ticketRef: null,
+        visitedNodeIds,
+      };
+    }
+
+    const fetchDataNode = definition.nodes.find((n) => n.type === 'fetch_data');
+    const windowDays = fetchDataNode?.config.refundWindowDays ?? 7;
+
+    const eligible = orders.filter((o) => isRefundEligible(o, windowDays));
+    const ineligible = orders.filter((o) => !isRefundEligible(o, windowDays));
+
+    const lines: string[] = [];
+    if (eligible.length > 0) {
+      lines.push(`These orders are eligible for a refund (delivered within the last ${windowDays} days):`);
+      lines.push(...eligible.map((o) => formatOrderLine(o)));
+    } else {
+      lines.push('None of your recent orders are currently eligible for a refund.');
+    }
+    if (ineligible.length > 0) {
+      lines.push('', 'Not eligible:');
+      lines.push(...ineligible.map((o) => formatOrderLine(o, ineligibleReason(o, windowDays))));
+    }
+    if (eligible.length > 0) {
+      lines.push('', 'Reply with the order reference to start a refund on an eligible order.');
+    }
+
+    return { answer: lines.join('\n'), escalate: false, configured: true, sources: [], ticketRef: null, visitedNodeIds };
+  }
+
+  /**
+   * Real return handling: only a delivered order is eligible (an in-transit
+   * or already-refunded/cancelled one has nothing to return), and returns
+   * need an actual person to arrange pickup — so this raises a real ticket
+   * rather than just describing eligibility like the refund reply does.
+   * When more than one order qualifies it asks which one first; the
+   * customer's next message (typically just an order ref) resolves back to
+   * `ctx.intent === 'return'` via the ref-only shortcut in detect_intent above.
+   */
+  private async buildReturnReply(
+    tenantId: string,
+    orders: Order[],
+    question: string,
+    options: RunOptions,
+    visitedNodeIds: string[],
+  ): Promise<AstraAnswerDto> {
+    const eligible = orders.filter((o) => o.status === 'delivered');
+
+    if (eligible.length === 0) {
+      return {
+        answer:
+          "I don't see any delivered orders on your account that are eligible for a return. If you placed the order with a different phone number or email, let me know and I'll look again.",
+        escalate: false,
+        configured: true,
+        sources: [],
+        ticketRef: null,
+        visitedNodeIds,
+      };
+    }
+
+    const normalizedQuestion = normalizeRef(question);
+    const matchedOrder = eligible.find((o) => o.extRef && normalizedQuestion.includes(normalizeRef(o.extRef)));
+    const target = eligible.length === 1 ? eligible[0] : matchedOrder;
+
+    if (!target) {
+      const refs = eligible.map((o) => o.extRef ?? o.id).join(' or ');
+      return {
+        answer: `You have ${eligible.length} delivered orders eligible for return — ${refs}. Which one would you like to return?`,
+        escalate: false,
+        configured: true,
+        sources: [],
+        ticketRef: null,
+        clarifying: true,
+        visitedNodeIds,
+      };
+    }
+
+    const ticket = await this.tickets.create(tenantId, null, {
+      subject: `Return request — ${target.extRef ?? target.id}`,
+      description: `Customer wants to return order ${target.extRef ?? target.id} ("${target.description ?? 'item'}"). Their message: ${question}`,
+      category: 'agent_flow_return',
+      contactId: options.contactId,
+      conversationId: options.conversationId,
+    });
+
+    return {
+      answer: `Got it — I've raised a return request for ${target.extRef ?? target.id} ("${target.description ?? 'item'}"), ticket ${ticket.extRef}. One of our agents will contact you soon to arrange the pickup.`,
+      escalate: false,
+      configured: true,
+      sources: [],
+      ticketRef: ticket.extRef,
+      visitedNodeIds,
+    };
   }
 }

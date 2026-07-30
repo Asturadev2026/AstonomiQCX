@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useConvHub, useCreateMentionTicket, useEscalateMention } from '../../lib/api/hooks';
 import { useToast } from '../../components/Toast';
 import { EmptyState, ErrorState, LoadingState } from '../../components/states';
+import { renderMarkdownLite } from '../../lib/markdownLite';
 import type { MentionCard } from '../../lib/api/types';
 
 /**
@@ -183,7 +184,7 @@ export function ConversationHub() {
                       </svg>
                       Astra AI replied publicly
                     </div>
-                    {m.botReply}
+                    {renderMarkdownLite(m.botReply)}
                   </div>
                 )}
                 <div className="cc-actions">
@@ -236,7 +237,7 @@ export function ConversationHub() {
                     {m.botReply && (
                       <div className="m bot">
                         <span className="who">Astra AI · public reply</span>
-                        <div className="bub">{m.botReply}</div>
+                        <div className="bub">{renderMarkdownLite(m.botReply)}</div>
                       </div>
                     )}
                     {stageIndex >= STAGE_INDEX.escalated && (
