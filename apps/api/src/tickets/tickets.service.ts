@@ -128,4 +128,13 @@ export class TicketsService {
       return ticket;
     });
   }
+
+  /** Public lookup by the customer-facing extRef, for the Self-Service Portal's ticket tracker. */
+  async getByRef(tenantId: string, extRef: string): Promise<Ticket> {
+    return withTenant(this.prisma, tenantId, async (tx) => {
+      const ticket = await tx.ticket.findFirst({ where: { extRef } });
+      if (!ticket) throw new NotFoundException(`Ticket ${extRef} not found`);
+      return ticket;
+    });
+  }
 }

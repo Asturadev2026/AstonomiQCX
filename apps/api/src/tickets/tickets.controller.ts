@@ -22,6 +22,11 @@ export class TicketsController {
     return this.svc.list(req.tenantId);
   }
 
+  @Get('by-ref/:extRef')
+  getByRef(@Req() req: TenantScopedRequest, @Param('extRef') extRef: string) {
+    return this.svc.getByRef(req.tenantId, extRef);
+  }
+
   @Get(':id')
   getOne(@Req() req: TenantScopedRequest, @Param('id') id: string) {
     return this.svc.getOne(req.tenantId, id);
