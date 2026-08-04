@@ -11,6 +11,16 @@ export interface SlaPolicyDto {
   resolutionMins: number;
 }
 
+export interface CreateSlaPolicyDto {
+  name: string;
+  priority?: string | null;
+  channel?: string | null;
+  segment?: string | null;
+  departmentId?: string | null;
+  firstResponseMins: number;
+  resolutionMins: number;
+}
+
 export interface SlaKpis {
   compliancePct: number | null;
   atRiskCount: number;

@@ -65,6 +65,7 @@ import type {
   SendTestCallDto,
   ServiceVisitDto,
   SetIvrBranchDto,
+  CreateSlaPolicyDto,
   SetIvrNextDto,
   SetNextNodeDto,
   SlaBreachRow,
@@ -626,6 +627,17 @@ export function useSlaPolicies() {
   });
 }
 
+export function useCreateSlaPolicy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateSlaPolicyDto) =>
+      post<CreateSlaPolicyDto, SlaPolicyDto>('/sla/policies', body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['sla', 'policies'] });
+    },
+  });
+}
+
 export function useSlaKpis() {
   return useQuery<SlaKpis>({
     queryKey: ['sla', 'kpis'],
@@ -660,6 +672,14 @@ export function useDepartments() {
   return useQuery<DepartmentCardDto[]>({
     queryKey: ['departments'],
     queryFn: () => api('/departments'),
+  });
+}
+
+export function useCreateDepartment() {
+  const queryClient = useQueryClient();
+  return useMutation<DepartmentCardDto, Error, { name: string; icon?: string; color?: string }>({
+    mutationFn: (payload) => post('/departments', payload),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['departments'] }),
   });
 }
 
@@ -917,6 +937,30 @@ export function useCreateInvite() {
   const queryClient = useQueryClient();
   return useMutation<InviteDto, Error, CreateInviteDto>({
     mutationFn: (payload) => post('/settings/invites', payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['settings'] });
+      void queryClient.invalidateQueries({ queryKey: ['departments'] });
+      void queryClient.invalidateQueries({ queryKey: ['workforce'] });
+    },
+  });
+}
+
+export function useUpdateUserDepartment() {
+  const queryClient = useQueryClient();
+  return useMutation<{ success: boolean }, Error, { userId: string; departmentId: string | null }>({
+    mutationFn: ({ userId, departmentId }) => patchBody(`/settings/users/${userId}/department`, { departmentId }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['settings'] });
+      void queryClient.invalidateQueries({ queryKey: ['departments'] });
+      void queryClient.invalidateQueries({ queryKey: ['workforce'] });
+    },
+  });
+}
+
+export function useUpdateUserRole() {
+  const queryClient = useQueryClient();
+  return useMutation<{ success: boolean; role: string }, Error, { userId: string; roleName: string }>({
+    mutationFn: ({ userId, roleName }) => patchBody(`/settings/users/${userId}/role`, { roleName }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['settings'] });
     },
