@@ -1,5 +1,6 @@
-import { Controller, Get, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Req } from '@nestjs/common';
 import type { TenantScopedRequest } from '../tenancy/tenant.middleware';
+import { CreateSlaPolicyDto } from './create-sla-policy.dto';
 import { SlaService } from './sla.service';
 
 /** Not guarded yet, same rationale as Kb/Rules/AgentFlow/Macros controllers. */
@@ -10,6 +11,11 @@ export class SlaController {
   @Get('policies')
   policies(@Req() req: TenantScopedRequest) {
     return this.svc.listPolicies(req.tenantId);
+  }
+
+  @Post('policies')
+  createPolicy(@Req() req: TenantScopedRequest, @Body() dto: CreateSlaPolicyDto) {
+    return this.svc.createPolicy(req.tenantId, dto);
   }
 
   @Get('kpis')

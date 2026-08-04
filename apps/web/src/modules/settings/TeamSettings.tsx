@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { useCreateInvite, useSettings, useToggleSetting } from '../../lib/api/hooks';
+import { useCreateInvite, useDepartments, useSettings, useToggleSetting, useUpdateUserDepartment, useUpdateUserRole } from '../../lib/api/hooks';
 import { useToast } from '../../components/Toast';
 import { ErrorState, LoadingState } from '../../components/states';
-import type { SettingsToggles } from '../../lib/api/types';
+import type { SettingsToggles, UiRoleName } from '../../lib/api/types';
+import { UI_ROLES } from '../../lib/api/types';
 
 const TOGGLE_META: { key: keyof SettingsToggles; title: string; desc: string }[] = [
   { key: 'autoResolve', title: 'Auto-resolve with AI', desc: 'Let Astra close routine tickets' },
@@ -30,11 +31,22 @@ const inputStyle = {
  */
 export function TeamSettings() {
   const { data, isLoading, error, refetch } = useSettings();
+  const { data: departments } = useDepartments();
   const toggleSetting = useToggleSetting();
   const createInvite = useCreateInvite();
+  const updateUserDept = useUpdateUserDepartment();
+  const updateUserRole = useUpdateUserRole();
   const toast = useToast();
   const [showInvite, setShowInvite] = useState(false);
   const [email, setEmail] = useState('');
+  const [selectedDeptId, setSelectedDeptId] = useState<string>('');
+
+  /** Map the backend roleLabel back to one of our three UI roles. */
+  function roleToUi(roleLabel: string): UiRoleName {
+    if (roleLabel === 'Admin') return 'Admin';
+    if (roleLabel === 'Manager') return 'Manager';
+    return 'Executive'; // Agent / TeamLead / QA / Viewer → Executive (view-only for unknown roles)
+  }
 
   if (isLoading) return <LoadingState />;
   if (error || !data) return <ErrorState error={error} retry={() => void refetch()} />;
@@ -42,11 +54,12 @@ export function TeamSettings() {
   function sendInvite() {
     if (!email.trim()) return;
     createInvite.mutate(
-      { email: email.trim() },
+      { email: email.trim(), departmentId: selectedDeptId || undefined },
       {
         onSuccess: () => {
           toast('Invite sent ✓');
           setEmail('');
+          setSelectedDeptId('');
           setShowInvite(false);
         },
         onError: (err) => toast(err instanceof Error ? err.message : 'Could not send invite'),
@@ -79,6 +92,18 @@ export function TeamSettings() {
                 style={{ ...inputStyle, flex: 1 }}
                 onKeyDown={(e) => e.key === 'Enter' && sendInvite()}
               />
+              <select
+                value={selectedDeptId}
+                onChange={(e) => setSelectedDeptId(e.target.value)}
+                style={{ ...inputStyle, width: 170 }}
+              >
+                <option value="">Department (Optional)</option>
+                {departments?.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.icon} {d.name}
+                  </option>
+                ))}
+              </select>
               <button className="btn btn-g" disabled={createInvite.isPending} onClick={sendInvite}>
                 Send
               </button>
@@ -89,7 +114,7 @@ export function TeamSettings() {
               <tr>
                 <th>Member</th>
                 <th>Role</th>
-                <th>Team</th>
+                <th>Department</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -108,9 +133,70 @@ export function TeamSettings() {
                     </div>
                   </td>
                   <td>
-                    <span className={`role ${u.roleClass}`}>{u.roleLabel}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <select
+                        value={u.status === 'Pending' ? '' : roleToUi(u.roleLabel)}
+                        disabled={u.status === 'Pending'}
+                        onChange={(e) => {
+                          const roleName = e.target.value as UiRoleName;
+                          updateUserRole.mutate(
+                            { userId: u.id, roleName },
+                            {
+                              onSuccess: () => toast(`Role updated to ${roleName} ✓`),
+                              onError: () => toast('Could not update role', 'error'),
+                            },
+                          );
+                        }}
+                        style={{
+                          background: 'none',
+                          border: '1px solid var(--line2)',
+                          borderRadius: 6,
+                          padding: '4px 8px',
+                          fontSize: 12,
+                          color: 'var(--text)',
+                          cursor: u.status === 'Pending' ? 'default' : 'pointer',
+                          opacity: u.status === 'Pending' ? 0.5 : 1,
+                        }}
+                      >
+                        {u.status === 'Pending' && <option value="">—</option>}
+                        {UI_ROLES.map((r) => (
+                          <option key={r} value={r}>
+                            {r === 'Executive' ? '🎫 Executive' : r === 'Admin' ? '🔑 Admin' : '📊 Manager'}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </td>
-                  <td>{u.teamName ?? '—'}</td>
+                  <td>
+                    <select
+                      value={u.departmentId ?? ''}
+                      onChange={(e) =>
+                        updateUserDept.mutate(
+                          { userId: u.id, departmentId: e.target.value || null },
+                          {
+                            onSuccess: () => toast('Department assigned ✓'),
+                            onError: () => toast('Could not assign department', 'error'),
+                          },
+                        )
+                      }
+                      style={{
+                        background: 'none',
+                        border: '1px solid var(--line2)',
+                        borderRadius: 6,
+                        padding: '4px 8px',
+                        fontSize: 12,
+                        color: 'var(--text)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <option value="">Unassigned</option>
+                      {departments?.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.icon} {d.name}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
                   <td>
                     <span className="st-on" style={u.status === 'Pending' ? { color: 'var(--amber)' } : undefined}>
                       <span className="dot" style={u.status === 'Pending' ? { background: 'var(--amber)' } : undefined} />

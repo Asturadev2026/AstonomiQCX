@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { getPrisma, withTenant } from '@aq/db';
-import type { CreateInviteDto, IntegrationCard, InviteDto, SettingsPayload, SettingsToggles, TeamMemberRow } from '@aq/shared';
+import type { CreateInviteDto, IntegrationCard, InviteDto, SettingsPayload, SettingsToggles, TeamMemberRow, UpdateUserRoleDto } from '@aq/shared';
+import { UI_ROLE_TO_DB } from '@aq/shared';
 
 const DEFAULT_TOGGLES: SettingsToggles = {
   autoResolve: true,
@@ -22,8 +23,9 @@ const CHANNEL_META: Record<string, { label: string; icon: string; color: string 
   salesforce: { label: 'Salesforce CRM', icon: '📊', color: '#4F46E5' },
 };
 
-const ROLE_LABEL: Record<string, string> = { TeamLead: 'Team Lead' };
-const ROLE_CLASS: Record<string, string> = { Admin: 'admin', TeamLead: 'lead' };
+// Agent is displayed as "Executive" in the UI (three-role system).
+const ROLE_LABEL: Record<string, string> = { Agent: 'Executive', TeamLead: 'Team Lead' };
+const ROLE_CLASS: Record<string, string> = { Admin: 'admin', Manager: 'lead', TeamLead: 'lead' };
 
 function initials(name: string): string {
   return name
@@ -41,11 +43,14 @@ export class SettingsService {
   async getSettings(tenantId: string): Promise<SettingsPayload> {
     return withTenant(this.prisma, tenantId, async (tx) => {
       const [users, pendingInvites, settings, channels] = await Promise.all([
-        tx.user.findMany({ include: { role: true, team: true }, orderBy: { name: 'asc' } }),
+        tx.user.findMany({ include: { role: true, team: true, department: true }, orderBy: { name: 'asc' } }),
         tx.invite.findMany({ where: { status: 'sent' }, include: { role: true }, orderBy: { createdAt: 'desc' } }),
         tx.tenantSettings.findUnique({ where: { tenantId } }),
         tx.channel.findMany({ where: { tenantId } }),
       ]);
+
+      const userEmails = new Set(users.map((u) => u.email.toLowerCase()));
+      const unacceptedInvites = pendingInvites.filter((i) => !userEmails.has(i.email.toLowerCase()));
 
       const team: TeamMemberRow[] = [
         ...users.map((u) => ({
@@ -57,11 +62,11 @@ export class SettingsService {
           roleLabel: u.role ? (ROLE_LABEL[u.role.name] ?? u.role.name) : 'Agent',
           roleClass: u.role ? (ROLE_CLASS[u.role.name] ?? '') : '',
           teamName: u.team?.name ?? null,
+          departmentId: u.departmentId,
+          departmentName: u.department?.name ?? null,
           status: u.status === 'active' ? 'Active' : u.status,
         })),
-        // Invited but not yet accepted — no User row exists yet, so these are
-        // surfaced from Invite directly rather than left invisible after sending.
-        ...pendingInvites.map((i) => ({
+        ...unacceptedInvites.map((i) => ({
           id: i.id,
           name: i.email,
           initials: initials(i.email.split('@')[0]!.replace(/[._-]/g, ' ')),
@@ -70,6 +75,8 @@ export class SettingsService {
           roleLabel: i.role ? (ROLE_LABEL[i.role.name] ?? i.role.name) : '—',
           roleClass: i.role ? (ROLE_CLASS[i.role.name] ?? '') : '',
           teamName: null,
+          departmentId: i.departmentId,
+          departmentName: null,
           status: 'Pending',
         })),
       ];
@@ -110,8 +117,66 @@ export class SettingsService {
 
   async createInvite(tenantId: string, dto: CreateInviteDto): Promise<InviteDto> {
     return withTenant(this.prisma, tenantId, async (tx) => {
-      const invite = await tx.invite.create({ data: { tenantId, email: dto.email } });
+      const role =
+        (await tx.role.findFirst({ where: { tenantId, name: 'Admin' } })) ??
+        (await tx.role.findFirst({ where: { tenantId } }));
+
+      const status = role ? 'accepted' : 'sent';
+      const invite = await tx.invite.create({
+        data: { tenantId, email: dto.email, roleId: role?.id, departmentId: dto.departmentId, status },
+      });
+
+      const existingUser = await tx.user.findFirst({ where: { tenantId, email: dto.email } });
+      if (!existingUser && role) {
+        await tx.user.create({
+          data: {
+            tenantId,
+            name: dto.email.split('@')[0]!,
+            email: dto.email,
+            roleId: role.id,
+            departmentId: dto.departmentId,
+            status: 'active',
+            avatarColor: '#2563EB',
+          },
+        });
+      } else if (existingUser && dto.departmentId) {
+        await tx.user.update({
+          where: { id: existingUser.id },
+          data: { departmentId: dto.departmentId },
+        });
+      }
+
       return { id: invite.id, email: invite.email, status: invite.status };
+    });
+  }
+
+  async updateUserDepartment(tenantId: string, userId: string, departmentId: string | null) {
+    return withTenant(this.prisma, tenantId, async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: { departmentId },
+      });
+      return { success: true };
+    });
+  }
+
+  async updateUserRole(tenantId: string, userId: string, dto: UpdateUserRoleDto) {
+    return withTenant(this.prisma, tenantId, async (tx) => {
+      const dbRoleName = UI_ROLE_TO_DB[dto.roleName];
+      // Ensure the role exists in this tenant — seed it if missing.
+      let role = await tx.role.findFirst({ where: { tenantId, name: dbRoleName } });
+      if (!role) {
+        const PERMS_BY_ROLE: Record<string, string[]> = {
+          Admin: ['*'],
+          Manager: ['ticket.view.all', 'ticket.create', 'ticket.move', 'ticket.assign', 'sla.view', 'refund.approve', 'analytics.view', 'audit.view'],
+          Agent: ['ticket.view.assigned', 'ticket.move', 'conversation.view', 'conversation.reply'],
+        };
+        role = await tx.role.create({
+          data: { tenantId, name: dbRoleName, permissions: PERMS_BY_ROLE[dbRoleName] ?? [] },
+        });
+      }
+      await tx.user.update({ where: { id: userId }, data: { roleId: role.id } });
+      return { success: true, role: dto.roleName };
     });
   }
 }

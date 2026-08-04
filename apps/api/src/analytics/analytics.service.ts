@@ -282,10 +282,12 @@ export class AnalyticsService {
       const convById = new Map(conversations.map((c) => [c.id, c]));
       const hourGapSecs = new Map<number, number[]>();
       for (const [convId, timestamps] of byConv) {
-        if (timestamps.length < 2) continue;
+        const t0 = timestamps[0];
+        const t1 = timestamps[1];
+        if (!t0 || !t1) continue;
         const conv = convById.get(convId);
         if (!conv) continue;
-        const gapSecs = (timestamps[1].getTime() - timestamps[0].getTime()) / 1000;
+        const gapSecs = (t1.getTime() - t0.getTime()) / 1000;
         const hour = conv.createdAt.getHours();
         if (!hourGapSecs.has(hour)) hourGapSecs.set(hour, []);
         hourGapSecs.get(hour)!.push(gapSecs);

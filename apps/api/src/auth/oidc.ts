@@ -45,7 +45,27 @@ export async function loadUser(tenantId: string, oidcSubject: string) {
  */
 export async function loadDevUser(tenantId: string) {
   return withTenant(getPrisma(), tenantId, async (tx) => {
-    const user = await tx.user.findFirst({ where: { roleId: { not: null } }, orderBy: { name: 'asc' } });
+    let user = await tx.user.findFirst({ where: { roleId: { not: null } }, orderBy: { name: 'asc' } });
+    if (!user) {
+      const invite = await tx.invite.findFirst({ where: { tenantId } });
+      const role =
+        (await tx.role.findFirst({ where: { tenantId, name: 'Admin' } })) ??
+        (await tx.role.findFirst({ where: { tenantId } }));
+
+      if (role) {
+        const email = invite?.email ?? 'admin@workspace.local';
+        user = await tx.user.create({
+          data: {
+            tenantId,
+            name: email.split('@')[0]!,
+            email,
+            roleId: role.id,
+            status: 'active',
+            avatarColor: '#2563EB',
+          },
+        });
+      }
+    }
     if (!user) throw new Error('No user available for the dev auth stand-in');
 
     const role = user.roleId ? await tx.role.findUnique({ where: { id: user.roleId } }) : null;

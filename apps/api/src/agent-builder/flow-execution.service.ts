@@ -206,13 +206,50 @@ export class FlowExecutionService {
               return this.buildReturnReply(tenantId, ctx.orders ?? [], question, options, visitedNodeIds);
             }
 
-            // Resolve a mentioned order ref up front (case/hyphen-insensitive) so a
-            // reply like "zk6" reliably matches "ZK-6" — both for skipping the
-            // ambiguity check below and for narrowing what the LLM sees, so it can't
-            // pick the wrong order out of a list when the customer already named one.
+            // Fetch recent conversation history for multi-turn context
+            const recentMessages = options.conversationId
+              ? await withTenant(this.prisma, tenantId, (tx) =>
+                  tx.message.findMany({
+                    where: { conversationId: options.conversationId },
+                    orderBy: { createdAt: 'desc' },
+                    take: 6,
+                  }),
+                )
+              : [];
+
+            // Resolve a mentioned order ref up front (case/hyphen-insensitive)
             const normalizedQuestion = normalizeRef(question);
-            const matchedOrder = ctx.orders?.find((o) => o.extRef && normalizedQuestion.includes(normalizeRef(o.extRef)));
+            let matchedOrder = ctx.orders?.find((o) => o.extRef && normalizedQuestion.includes(normalizeRef(o.extRef)));
+
+            // If not found in current message, inspect recent conversation history for mentioned order refs
+            if (!matchedOrder && recentMessages.length > 0 && ctx.orders?.length) {
+              const combinedHistory = recentMessages.map((m) => normalizeRef(m.body ?? '')).join(' ');
+              matchedOrder = ctx.orders.find((o) => o.extRef && combinedHistory.includes(normalizeRef(o.extRef)));
+            }
+
             const relevantOrders = matchedOrder ? [matchedOrder] : ctx.orders;
+
+            // Handle non-delivery complaint when a customer says "not received" for a delivered order
+            const isNonDeliveryComplaint = /not received|didn't get|haven't received|never arrived|missing package|not here/i.test(question);
+            const targetOrder = matchedOrder ?? (relevantOrders?.length === 1 ? relevantOrders[0] : null);
+
+            if (isNonDeliveryComplaint && targetOrder && targetOrder.status === 'delivered') {
+              const ticket = await this.tickets.create(tenantId, null, {
+                subject: `Non-delivery complaint for ${targetOrder.extRef ?? targetOrder.id}`,
+                description: `Customer states order ${targetOrder.extRef ?? targetOrder.id} was not received despite status being delivered. Question: ${question}`,
+                category: 'non_delivery_complaint',
+                contactId: options.contactId,
+                conversationId: options.conversationId,
+              });
+              return {
+                answer: `I'm sorry to hear that you haven't received order ${targetOrder.extRef ?? targetOrder.id} despite it being marked as delivered. I've raised escalation ticket ${ticket.extRef} for our logistics team to investigate immediately.`,
+                escalate: false,
+                configured: true,
+                sources: [],
+                ticketRef: ticket.extRef,
+                visitedNodeIds,
+              };
+            }
 
             // More than one order genuinely in transit is ambiguous for a tracking
             // question — "most recent" isn't a safe default when several are equally
@@ -222,6 +259,21 @@ export class FlowExecutionService {
             const looksLikeOrderQuestion =
               ctx.intent === 'track' ||
               (ctx.intent === undefined && /order|track|deliver|shipped|shipment|transit|package|parcel/i.test(question));
+
+            // No orders on record for this contact — ask for the order ref rather than
+            // falling through to the LLM which has nothing to ground on and escalates.
+            if (looksLikeOrderQuestion && (!ctx.orders || ctx.orders.length === 0)) {
+              return {
+                answer: `I'd be happy to help track your order! Could you please share your order reference number (e.g. ZK-123)?`,
+                escalate: false,
+                configured: true,
+                sources: [],
+                ticketRef: null,
+                clarifying: true,
+                visitedNodeIds,
+              };
+            }
+
             if (inTransitOrders.length > 1 && !matchedOrder && looksLikeOrderQuestion) {
               const refs = inTransitOrders.map((o) => o.extRef ?? o.id).join(' or ');
               return {
@@ -237,10 +289,16 @@ export class FlowExecutionService {
 
             const articles = await this.kb.searchByKeyword(tenantId, question);
             const kbContext = articles.map((a) => `# ${a.title}\n${a.body}`).join('\n---\n');
-            // List every relevant order rather than just the newest — lets the LLM
-            // match a specific order ref the customer mentions instead of always
-            // defaulting to the latest one, while still instructing it to name which
-            // order it means so a multi-order customer never gets an ambiguous answer.
+            const historyBlock = recentMessages.length
+              ? `Recent conversation history (most recent last):\n` +
+                recentMessages
+                  .slice()
+                  .reverse()
+                  .map((m) => `- ${m.senderType === 'customer' ? 'Customer' : 'Astra'}: ${m.body ?? ''}`)
+                  .join('\n') +
+                `\n\n`
+              : '';
+
             const orderLine = relevantOrders?.length
               ? `Their orders, most recent first:\n` +
                 relevantOrders
@@ -249,15 +307,15 @@ export class FlowExecutionService {
                       `- ${o.extRef ?? o.id}: "${o.description ?? 'item'}", status: ${o.status ?? 'unknown'}, amount: ₹${o.amount ?? '?'}`,
                   )
                   .join('\n') +
-                `\n\nIf the customer's question names a specific order reference, answer about that one. Otherwise ` +
+                `\n\nIf the customer's question names or refers to a specific order reference, answer about that one. Otherwise ` +
                 `answer about the most recent order (listed first) and state its reference explicitly so they know ` +
                 `which order you mean.\n\n`
               : '';
             const styleInstruction = options.channel === 'voice' ? `${VOICE_STYLE_INSTRUCTION} ` : '';
             const prompt =
               `You are Astra, the support assistant. ${styleInstruction}The customer's detected intent is ` +
-              `"${ctx.intent ?? 'other'}". ${orderLine}Answer the customer ONLY using the knowledge base context ` +
-              `below (and the order details above if relevant). Reply in ${language}. If the answer is not in the ` +
+              `"${ctx.intent ?? 'other'}". ${orderLine}${historyBlock}Answer the customer ONLY using the knowledge base context ` +
+              `below (and the order/conversation details above if relevant). Reply in ${language}. If the answer is not in the ` +
               `context, or the issue needs a human (like a refund or complaint), reply with exactly the word ` +
               `ESCALATE.\n\nContext:\n${kbContext || '(no matching knowledge base articles)'}\n\n` +
               `Customer question: ${question}`;

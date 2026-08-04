@@ -120,7 +120,7 @@ export class WhatsappService {
     await this.conversations.appendMessage(tenantId, conversation.id, { senderType: 'customer', body: text });
 
     // Guide §10.4: same Astra brain answers on every channel.
-    const answer = await this.ai.ask(tenantId, text, { contactId: contact.id, conversationId: conversation.id });
+    const answer = await this.ai.ask(tenantId, text, { contactId: contact.id, conversationId: conversation.id, channel: 'whatsapp' });
     const replyText = !answer.configured
       ? "We're having a temporary issue — our team will follow up with you shortly."
       : answer.escalate

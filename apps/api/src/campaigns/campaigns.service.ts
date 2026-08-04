@@ -53,7 +53,7 @@ const AUDIENCE_META: Record<AudienceId, Pick<CampaignAudience, 'icon' | 'iconCla
 };
 
 function firstName(name: string | null | undefined): string {
-  return (name ?? 'there').split(' ')[0];
+  return (name ?? 'there').split(' ')[0] ?? 'there';
 }
 
 @Injectable()

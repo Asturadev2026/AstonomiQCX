@@ -463,7 +463,7 @@ export interface KbArticle {
 export type { CreateMacroDto, MacroDto } from '@aq/shared';
 
 // GET /api/v1/sla/policies, /sla/kpis, /sla/scorecard, /sla/breaches, /sla/escalation-matrix
-export type { EscalationLevelDto, SlaBreachRow, SlaKpis, SlaPolicyDto, SlaScorecardRow } from '@aq/shared';
+export type { CreateSlaPolicyDto, EscalationLevelDto, SlaBreachRow, SlaKpis, SlaPolicyDto, SlaScorecardRow } from '@aq/shared';
 
 // GET /api/v1/departments
 export type { AgentStatus, DepartmentCardDto, DepartmentExecDto } from '@aq/shared';
@@ -517,4 +517,5 @@ export type { AuditLogRow } from '@aq/shared';
 export type { BillingPayload, InvoiceRow, PlanCard, UsageMeter } from '@aq/shared';
 
 // GET /api/v1/settings, PATCH /api/v1/settings/toggles/:key, POST /api/v1/settings/invites
-export type { CreateInviteDto, IntegrationCard, InviteDto, SettingsPayload, SettingsToggles, TeamMemberRow } from '@aq/shared';
+export type { CreateInviteDto, IntegrationCard, InviteDto, SettingsPayload, SettingsToggles, TeamMemberRow, UpdateUserRoleDto, UiRoleName } from '@aq/shared';
+export { UI_ROLES } from '@aq/shared';

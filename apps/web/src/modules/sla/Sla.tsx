@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  useCreateSlaPolicy,
   useEscalationMatrix,
   useSlaBreaches,
   useSlaKpis,
@@ -8,6 +9,7 @@ import {
 } from '../../lib/api/hooks';
 import { ErrorState, LoadingState } from '../../components/states';
 import { useToast } from '../../components/Toast';
+import { Modal } from '../../components/Modal';
 import type { SlaBreachRow } from '../../lib/api/types';
 
 /**
@@ -18,9 +20,7 @@ import type { SlaBreachRow } from '../../lib/api/types';
  * from the real SlaPolicy/SlaEvent/Escalation/EscalationRule tables — but the
  * clock itself stays Part 8's plain clock time, not the business-hours-aware
  * clock, and there's no background sweep auto-escalating tickets yet (both
- * need `apps/workers`, deliberately out of scope for this pass). "+ New
- * policy" stays a toast — no policy editor yet, same precedent as
- * Automations' "New rule."
+ * need `apps/workers`, deliberately out of scope for this pass).
  */
 
 function fmtTimer(totalSeconds: number): string {
@@ -55,11 +55,20 @@ function statusLabel(status: SlaBreachRow['status']): string {
 export function Sla() {
   const kpis = useSlaKpis();
   const policies = useSlaPolicies();
+  const createPolicyMut = useCreateSlaPolicy();
   const [scoreMode, setScoreMode] = useState<'exec' | 'dept'>('exec');
   const scorecard = useSlaScorecard(scoreMode);
   const breachesQuery = useSlaBreaches();
   const escMatrix = useEscalationMatrix();
   const toast = useToast();
+
+  const [showModal, setShowModal] = useState(false);
+  const [policyName, setPolicyName] = useState('');
+  const [priority, setPriority] = useState('p1');
+  const [firstResponseMins, setFirstResponseMins] = useState(15);
+  const [resolutionMins, setResolutionMins] = useState(120);
+  const [channel, setChannel] = useState('');
+  const [segment, setSegment] = useState('');
 
   // Local per-second ticking, resynced to the real fetched values on every refetch —
   // same visual effect as the prototype's setInterval, but grounded in real targetAt data.
@@ -74,6 +83,31 @@ export function Sla() {
     return () => clearInterval(id);
   }, []);
 
+  const handleCreatePolicy = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!policyName.trim()) {
+      toast('Please enter a policy name');
+      return;
+    }
+    try {
+      await createPolicyMut.mutateAsync({
+        name: policyName.trim(),
+        priority: priority || null,
+        firstResponseMins: Number(firstResponseMins) || 15,
+        resolutionMins: Number(resolutionMins) || 120,
+        channel: channel.trim() || null,
+        segment: segment.trim() || null,
+      });
+      toast(`Created SLA policy "${policyName.trim()}"`);
+      setShowModal(false);
+      setPolicyName('');
+      setChannel('');
+      setSegment('');
+    } catch (err: any) {
+      toast(`Failed to create SLA policy: ${err?.message ?? 'Error'}`);
+    }
+  };
+
   if (kpis.isLoading || policies.isLoading) return <LoadingState />;
   if (kpis.error || !kpis.data) return <ErrorState error={kpis.error} retry={() => void kpis.refetch()} />;
   if (policies.error || !policies.data) return <ErrorState error={policies.error} retry={() => void policies.refetch()} />;
@@ -82,6 +116,115 @@ export function Sla() {
 
   return (
     <>
+      {showModal && (
+        <Modal title="Create SLA Policy" onClose={() => setShowModal(false)}>
+          <form onSubmit={handleCreatePolicy} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                Policy Name
+              </label>
+              <input
+                type="text"
+                className="input"
+                placeholder="e.g. VIP Response Guarantee"
+                value={policyName}
+                onChange={(e) => setPolicyName(e.target.value)}
+                required
+                style={{ width: '100%' }}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                  Priority Tier
+                </label>
+                <select
+                  className="input"
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value)}
+                  style={{ width: '100%' }}
+                >
+                  <option value="p1">P1 — Urgent</option>
+                  <option value="p2">P2 — High</option>
+                  <option value="p3">P3 — Medium</option>
+                  <option value="p4">P4 — Low</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                  Customer Segment
+                </label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="e.g. Enterprise, VIP (Optional)"
+                  value={segment}
+                  onChange={(e) => setSegment(e.target.value)}
+                  style={{ width: '100%' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                  First Response Target (Mins)
+                </label>
+                <input
+                  type="number"
+                  className="input"
+                  min={1}
+                  value={firstResponseMins}
+                  onChange={(e) => setFirstResponseMins(Number(e.target.value))}
+                  required
+                  style={{ width: '100%' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                  Resolution Target (Mins)
+                </label>
+                <input
+                  type="number"
+                  className="input"
+                  min={1}
+                  value={resolutionMins}
+                  onChange={(e) => setResolutionMins(Number(e.target.value))}
+                  required
+                  style={{ width: '100%' }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                Channel Filter (Optional)
+              </label>
+              <input
+                type="text"
+                className="input"
+                placeholder="e.g. WhatsApp, Email, Voice"
+                value={channel}
+                onChange={(e) => setChannel(e.target.value)}
+                style={{ width: '100%' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+              <button type="button" className="btn btn-o" onClick={() => setShowModal(false)}>
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-p" disabled={createPolicyMut.isPending}>
+                {createPolicyMut.isPending ? 'Saving…' : 'Save Policy'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
       <div className="grid kpis">
         <div className="card kpi">
           <div className="ic b-green">
@@ -126,7 +269,7 @@ export function Sla() {
       <div className="sect-title">
         <h2>SLA policies</h2>
         <div className="ln" />
-        <button className="btn btn-o" onClick={() => toast('Opening SLA policy editor…')}>
+        <button className="btn btn-o" onClick={() => setShowModal(true)}>
           + New policy
         </button>
       </div>

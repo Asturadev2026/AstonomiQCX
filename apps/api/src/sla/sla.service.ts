@@ -1,7 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { getPrisma, withTenant, type Tx, type Ticket } from '@aq/db';
-import type { EscalationLevelDto, SlaBreachRow, SlaKpis, SlaPolicyDto, SlaScorecardRow } from '@aq/shared';
+import type { CreateSlaPolicyDto, EscalationLevelDto, SlaBreachRow, SlaKpis, SlaPolicyDto, SlaScorecardRow } from '@aq/shared';
 import { DEFAULT_ESCALATION_RULES } from './default-escalation-rules';
+
+const DEFAULT_SLA_POLICIES = [
+  { priority: 'p1', name: 'P1 — Urgent', firstResponseMins: 15, resolutionMins: 120 },
+  { priority: 'p2', name: 'P2 — High', firstResponseMins: 30, resolutionMins: 240 },
+  { priority: 'p3', name: 'P3 — Medium', firstResponseMins: 60, resolutionMins: 480 },
+  { priority: 'p4', name: 'P4 — Low', firstResponseMins: 120, resolutionMins: 1440 },
+];
 
 function initials(name: string): string {
   return name
@@ -39,7 +46,44 @@ function isOverdue(event: { metAt: Date | null; breached: boolean; targetAt: Dat
 export class SlaService {
   private prisma = getPrisma();
 
+  private async ensureDefaultPolicies(tx: Tx, tenantId: string) {
+    let policies = await tx.slaPolicy.findMany();
+    if (policies.length === 0) {
+      for (const p of DEFAULT_SLA_POLICIES) {
+        await tx.slaPolicy.create({ data: { tenantId, priority: p.priority, name: p.name, firstResponseMins: p.firstResponseMins, resolutionMins: p.resolutionMins } });
+      }
+      policies = await tx.slaPolicy.findMany();
+    }
+    const unattached = await tx.ticket.findMany({
+      where: { slaEvents: { none: {} } },
+    });
+    for (const ticket of unattached) {
+      const policy = policies.find((p) => p.priority === ticket.priority) ?? policies[0];
+      if (policy) {
+        const createdMs = ticket.createdAt.getTime();
+        await tx.ticket.update({ where: { id: ticket.id }, data: { slaPolicyId: policy.id } });
+        await tx.slaEvent.createMany({
+          data: [
+            {
+              tenantId,
+              ticketId: ticket.id,
+              kind: 'first_response',
+              targetAt: new Date(createdMs + policy.firstResponseMins * 60_000),
+            },
+            {
+              tenantId,
+              ticketId: ticket.id,
+              kind: 'resolution',
+              targetAt: new Date(createdMs + policy.resolutionMins * 60_000),
+            },
+          ],
+        });
+      }
+    }
+  }
+
   async startTimers(tx: Tx, tenantId: string, ticket: Ticket) {
+    await this.ensureDefaultPolicies(tx, tenantId);
     const policy = await tx.slaPolicy.findFirst({
       where: { tenantId, priority: ticket.priority },
       orderBy: { id: 'asc' },
@@ -81,6 +125,7 @@ export class SlaService {
 
   async listPolicies(tenantId: string): Promise<SlaPolicyDto[]> {
     return withTenant(this.prisma, tenantId, async (tx) => {
+      await this.ensureDefaultPolicies(tx, tenantId);
       const [policies, depts] = await Promise.all([
         tx.slaPolicy.findMany({ orderBy: { firstResponseMins: 'asc' } }),
         tx.department.findMany(),
@@ -99,8 +144,41 @@ export class SlaService {
     });
   }
 
+  async createPolicy(tenantId: string, dto: CreateSlaPolicyDto): Promise<SlaPolicyDto> {
+    return withTenant(this.prisma, tenantId, async (tx) => {
+      const p = await tx.slaPolicy.create({
+        data: {
+          tenantId,
+          name: dto.name,
+          priority: dto.priority || null,
+          channel: dto.channel || null,
+          segment: dto.segment || null,
+          departmentId: dto.departmentId || null,
+          firstResponseMins: Number(dto.firstResponseMins) || 30,
+          resolutionMins: Number(dto.resolutionMins) || 240,
+        },
+      });
+      let departmentName: string | null = null;
+      if (p.departmentId) {
+        const dept = await tx.department.findUnique({ where: { id: p.departmentId } });
+        departmentName = dept?.name ?? null;
+      }
+      return {
+        id: p.id,
+        name: p.name,
+        priority: p.priority,
+        channel: p.channel,
+        segment: p.segment,
+        departmentName,
+        firstResponseMins: p.firstResponseMins,
+        resolutionMins: p.resolutionMins,
+      };
+    });
+  }
+
   async kpis(tenantId: string): Promise<SlaKpis> {
     return withTenant(this.prisma, tenantId, async (tx) => {
+      await this.ensureDefaultPolicies(tx, tenantId);
       const events = await tx.slaEvent.findMany({
         where: { kind: 'resolution' },
         include: { ticket: { select: { createdAt: true } } },
@@ -130,6 +208,7 @@ export class SlaService {
 
   async scorecard(tenantId: string, by: 'exec' | 'dept'): Promise<SlaScorecardRow[]> {
     return withTenant(this.prisma, tenantId, async (tx) => {
+      await this.ensureDefaultPolicies(tx, tenantId);
       const events = await tx.slaEvent.findMany({
         where: { kind: 'resolution' },
         include: { ticket: { select: { assignedUserId: true, departmentId: true } } },
@@ -138,8 +217,8 @@ export class SlaService {
 
       const groups = new Map<string, { assigned: number; met: number; breached: number; atRisk: number }>();
       for (const e of events) {
-        const key = by === 'exec' ? e.ticket.assignedUserId : e.ticket.departmentId;
-        if (!key) continue;
+        const rawKey = by === 'exec' ? e.ticket.assignedUserId : e.ticket.departmentId;
+        const key = rawKey ?? 'unassigned';
         const g = groups.get(key) ?? { assigned: 0, met: 0, breached: 0, atRisk: 0 };
         g.assigned++;
         const overdue = isOverdue(e, now);
@@ -148,10 +227,9 @@ export class SlaService {
         if (!e.metAt && !overdue && e.targetAt.getTime() - now <= AT_RISK_THRESHOLD_MINS * 60_000) g.atRisk++;
         groups.set(key, g);
       }
-      if (groups.size === 0) return [];
 
       const toRow = (key: string, name: string, initialsOrIcon: string, color: string | null): SlaScorecardRow => {
-        const g = groups.get(key)!;
+        const g = groups.get(key) ?? { assigned: 0, met: 0, breached: 0, atRisk: 0 };
         return {
           key,
           name,
@@ -165,13 +243,27 @@ export class SlaService {
         };
       };
 
+      const rows: SlaScorecardRow[] = [];
+
       if (by === 'exec') {
-        const users = await tx.user.findMany({ where: { id: { in: [...groups.keys()] } } });
-        return users.map((u) => toRow(u.id, u.name, initials(u.name), u.avatarColor)).sort((a, b) => b.assigned - a.assigned);
+        const users = await tx.user.findMany({ orderBy: { name: 'asc' } });
+        for (const u of users) {
+          rows.push(toRow(u.id, u.name, initials(u.name), u.avatarColor));
+        }
+        if (groups.has('unassigned')) {
+          rows.push(toRow('unassigned', 'Unassigned Queue', '??', '#94A3B8'));
+        }
+      } else {
+        const depts = await tx.department.findMany({ orderBy: { name: 'asc' } });
+        for (const d of depts) {
+          rows.push(toRow(d.id, d.name, d.icon ?? '🏢', d.color));
+        }
+        if (groups.has('unassigned')) {
+          rows.push(toRow('unassigned', 'General / Unassigned', '🏢', '#94A3B8'));
+        }
       }
 
-      const depts = await tx.department.findMany({ where: { id: { in: [...groups.keys()] } } });
-      return depts.map((d) => toRow(d.id, d.name, d.icon ?? '🏢', d.color)).sort((a, b) => b.assigned - a.assigned);
+      return rows.sort((a, b) => b.assigned - a.assigned);
     });
   }
 
