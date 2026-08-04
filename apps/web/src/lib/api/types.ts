@@ -276,6 +276,30 @@ export interface PortalPayload {
   latestOrder: LatestOrderStatus | null;
 }
 
+// GET /api/v1/orders/:extRef — Self-Service Portal order tracking (public, no login)
+export interface PublicOrderStatus {
+  extRef: string;
+  description: string | null;
+  qty: number;
+  amount: number | null;
+  status: string | null;
+  createdAt: string;
+}
+
+// GET /api/v1/tickets/by-ref/:extRef — Self-Service Portal ticket tracking (public, no login)
+export interface PublicTicketStatus {
+  extRef: string | null;
+  subject: string;
+  status: string;
+  priority: string;
+  createdAt: string;
+}
+
+// POST /api/v1/orders/:extRef/return — Self-Service Portal return/refund request (public, no login)
+export interface ReturnRequestResult {
+  ticketExtRef: string | null;
+}
+
 // GET /api/v1/campaigns/summary, POST /api/v1/campaigns
 export type AudienceId = 'gold' | 'abandoned_cart' | 'festive';
 export interface CampaignAudience {

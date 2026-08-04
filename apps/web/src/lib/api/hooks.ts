@@ -56,8 +56,11 @@ import type {
   OverviewPayload,
   PortalPayload,
   PriorityMatrixDto,
+  PublicOrderStatus,
+  PublicTicketStatus,
   QaPayload,
   RecentCampaign,
+  ReturnRequestResult,
   RuleDto,
   SendTestCallDto,
   ServiceVisitDto,
@@ -214,6 +217,28 @@ export function usePortal() {
   return useQuery<PortalPayload>({
     queryKey: ['portal'],
     queryFn: () => api('/portal/summary'),
+  });
+}
+
+export function useOrderLookup(extRef: string | null) {
+  return useQuery<PublicOrderStatus>({
+    queryKey: ['orders', extRef],
+    queryFn: () => api(`/orders/${encodeURIComponent(extRef ?? '')}`),
+    enabled: extRef !== null && extRef.trim() !== '',
+  });
+}
+
+export function useTicketLookup(extRef: string | null) {
+  return useQuery<PublicTicketStatus>({
+    queryKey: ['tickets', 'by-ref', extRef],
+    queryFn: () => api(`/tickets/by-ref/${encodeURIComponent(extRef ?? '')}`),
+    enabled: extRef !== null && extRef.trim() !== '',
+  });
+}
+
+export function useRequestReturn() {
+  return useMutation<ReturnRequestResult, Error, { extRef: string; reason: string }>({
+    mutationFn: ({ extRef, reason }) => post(`/orders/${encodeURIComponent(extRef)}/return`, { reason }),
   });
 }
 

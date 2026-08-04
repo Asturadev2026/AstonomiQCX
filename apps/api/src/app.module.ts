@@ -19,6 +19,7 @@ import { KbModule } from './kb/kb.module';
 import { MacrosModule } from './macros/macros.module';
 import { MentionsModule } from './mentions/mentions.module';
 import { NavModule } from './nav/nav.module';
+import { OrdersModule } from './orders/orders.module';
 import { PortalModule } from './portal/portal.module';
 import { PriorityMatrixModule } from './priority-matrix/priority-matrix.module';
 import { QaModule } from './qa/qa.module';
@@ -55,6 +56,7 @@ import { WorkforceModule } from './workforce/workforce.module';
     SurveysModule,
     CampaignsModule,
     PortalModule,
+    OrdersModule,
     QaModule,
     AnalyticsModule,
     WhatsappModule,
