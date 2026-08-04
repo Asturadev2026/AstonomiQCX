@@ -42,6 +42,7 @@ export function TicketsBoard() {
   const toast = useToast();
   const [creating, setCreating] = useState(false);
   const [subject, setSubject] = useState('');
+  const [priority, setPriority] = useState<TicketRow['priority']>('p3');
 
   if (isLoading) return <LoadingState />;
   if (error || !tickets) return <ErrorState error={error} retry={() => void refetch()} />;
@@ -50,10 +51,11 @@ export function TicketsBoard() {
     const text = subject.trim();
     if (!text) return;
     createTicket.mutate(
-      { subject: text },
+      { subject: text, priority },
       {
         onSuccess: () => {
           setSubject('');
+          setPriority('p3');
           setCreating(false);
           toast('New ticket created ✓');
         },
@@ -80,24 +82,41 @@ export function TicketsBoard() {
       </div>
 
       {creating && (
-        <div className="card" style={{ marginBottom: 14, padding: 14, display: 'flex', gap: 10, alignItems: 'center' }}>
-          <input
-            autoFocus
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleCreate();
-              if (e.key === 'Escape') setCreating(false);
-            }}
-            placeholder="What's the issue?"
-            style={{ flex: 1, background: 'var(--panel)', border: '1px solid var(--line2)', borderRadius: 9, padding: '9px 12px', fontSize: 13 }}
-          />
-          <button className="btn btn-g" onClick={handleCreate}>
-            Create
-          </button>
-          <button className="btn btn-o" onClick={() => setCreating(false)}>
-            Cancel
-          </button>
+        <div className="card" style={{ marginBottom: 14, padding: 14 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <input
+              autoFocus
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleCreate();
+                if (e.key === 'Escape') setCreating(false);
+              }}
+              placeholder="What's the issue?"
+              style={{ flex: 1, background: 'var(--panel)', border: '1px solid var(--line2)', borderRadius: 9, padding: '9px 12px', fontSize: 13 }}
+            />
+            <button className="btn btn-g" onClick={handleCreate}>
+              Create
+            </button>
+            <button className="btn btn-o" onClick={() => setCreating(false)}>
+              Cancel
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12 }}>
+            <span className="cap" style={{ marginRight: 2, marginBottom: 0 }}>
+              Priority
+            </span>
+            {(Object.keys(PRIORITY_META) as TicketRow['priority'][]).map((p) => (
+              <button
+                key={p}
+                type="button"
+                className={`prio prio-select ${p}${priority === p ? ' is-selected' : ''}`}
+                onClick={() => setPriority(p)}
+              >
+                {p.toUpperCase()} — {PRIORITY_META[p].label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

@@ -11,3 +11,17 @@ a.nav:visited {
 .side > div:not(.brand):not(.side-foot) {
   display: contents;
 }
+
+/* Selectable priority pill (ticket creation form) — same look as the read-only
+   .prio badge, but every state reserves the same 1.5px border so picking one
+   doesn't change its box size (prototype.css's .prio.p4 alone has a baked-in border). */
+button.prio.prio-select {
+  cursor: pointer;
+  border: 1.5px solid transparent;
+}
+button.prio.prio-select.p4 {
+  border-color: var(--line2);
+}
+button.prio.prio-select.is-selected {
+  border-color: var(--blue);
+}
