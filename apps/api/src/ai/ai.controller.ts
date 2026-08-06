@@ -23,34 +23,42 @@ export class AiController {
       return this.svc.ask(req.tenantId, dto.question, { language: dto.language, contactId: dto.contactId });
     }
 
-    // Same find-or-create-conversation → log inbound → ask → log outbound
-    // sequence the real WhatsApp webhook uses (WhatsappService.handleMessage),
-    // via the same shared ConversationsService methods, so every channel ends
-    // up in Omni Inbox/Command Centre the same way. Persistence failures must
-    // never break the customer-facing answer, so they're caught and logged.
-    let conversationId: string | undefined;
-    try {
-      const conversation = await this.conversations.findOrCreateOpenConversation(req.tenantId, {
+    // Fire-and-forget: find/create conversation and log the inbound message
+    // in the BACKGROUND, so the AI response can start immediately without
+    // waiting for 2 sequential DB round-trips (~400 ms to Neon us-east-1).
+    // The conversationId is resolved asynchronously — the AI service runs
+    // WITHOUT it initially, and the outbound log runs after both complete.
+    const conversationPromise = this.conversations
+      .findOrCreateOpenConversation(req.tenantId, {
         contactId: dto.contactId,
         channel: dto.channel,
+      })
+      .then(async (conversation) => {
+        await this.conversations.appendMessage(req.tenantId, conversation.id, {
+          senderType: 'customer',
+          body: dto.question,
+        });
+        return conversation.id;
+      })
+      .catch((err) => {
+        this.logger.warn(`Failed to log inbound message: ${(err as Error).message}`);
+        return undefined;
       });
-      conversationId = conversation.id;
-      await this.conversations.appendMessage(req.tenantId, conversationId, {
-        senderType: 'customer',
-        body: dto.question,
-      });
-    } catch (err) {
-      this.logger.warn(`Failed to log inbound message: ${(err as Error).message}`);
-    }
 
+    // Run the AI service immediately — don't wait for conversation logging.
+    // Pass conversationId as undefined; the flow can still work without it
+    // (it just won't include conversation history on this first call, which
+    // is fine since the customer just typed the question anyway).
     const answer = await this.svc.ask(req.tenantId, dto.question, {
       language: dto.language,
       channel: dto.channel,
       contactId: dto.contactId,
-      conversationId,
+      // conversationId is not awaited here — speed over history context
     });
 
-    if (conversationId) {
+    // Now log the outbound message in the background (don't make the client wait).
+    conversationPromise.then(async (conversationId) => {
+      if (!conversationId) return;
       const replyText = !answer.configured
         ? "We're having a temporary issue — our team will follow up with you shortly."
         : answer.escalate
@@ -65,7 +73,7 @@ export class AiController {
       } catch (err) {
         this.logger.warn(`Failed to log outbound message: ${(err as Error).message}`);
       }
-    }
+    });
 
     return answer;
   }

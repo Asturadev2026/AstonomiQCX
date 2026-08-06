@@ -51,21 +51,35 @@ export class AiService {
 
     const publishedFlow = await this.flows.findPublishedChatFlow(tenantId);
     if (publishedFlow) {
-      return this.flowExecution.run(tenantId, question, options);
+      // Pass the already-fetched flow to avoid a redundant DB round-trip inside run().
+      return this.flowExecution.run(tenantId, question, options, publishedFlow);
     }
 
-    const articles = await this.kb.searchByKeyword(tenantId, question);
-    const context = articles.map((a) => `# ${a.title}\n${a.body}`).join('\n---\n');
+    // Fan out the three independent reads in parallel: KB search, conversation history,
+    // and the order lookup (only when the question looks like an order query).
+    // Each is a separate withTenant() transaction (~1 s from India → us-east-1),
+    // so running them concurrently saves 2–3 serial round-trips.
+    const looksLikeOrderQuery = ORDER_QUERY_RE.test(question) || NON_DELIVERY_RE.test(question);
 
-    const recentMessages = options.conversationId
-      ? await withTenant(this.prisma, tenantId, (tx) =>
-          tx.message.findMany({
-            where: { conversationId: options.conversationId },
-            orderBy: { createdAt: 'desc' },
-            take: 6,
-          }),
-        )
-      : [];
+    const [articles, recentMessages, orders] = await Promise.all([
+      this.kb.searchByKeyword(tenantId, question),
+      options.conversationId
+        ? withTenant(this.prisma, tenantId, (tx) =>
+            tx.message.findMany({
+              where: { conversationId: options.conversationId },
+              orderBy: { createdAt: 'desc' },
+              take: 6,
+            }),
+          )
+        : Promise.resolve([]),
+      looksLikeOrderQuery && options.contactId
+        ? withTenant(this.prisma, tenantId, (tx) =>
+            tx.order.findMany({ where: { contactId: options.contactId }, orderBy: { createdAt: 'desc' }, take: 5 }),
+          )
+        : Promise.resolve(null),
+    ]);
+
+    const context = articles.map((a) => `# ${a.title}\n${a.body}`).join('\n---\n');
 
     const historyBlock = recentMessages.length
       ? `Recent conversation history (most recent last):\n` +
@@ -80,12 +94,7 @@ export class AiService {
     // Order-aware path for tenants without a published Agent Builder flow.
     // Mirrors FlowExecutionService so that "where is my order" / "not received"
     // queries work on all channels regardless of whether a flow is published.
-    const looksLikeOrderQuery = ORDER_QUERY_RE.test(question) || NON_DELIVERY_RE.test(question);
-    if (looksLikeOrderQuery && options.contactId) {
-      const orders = await withTenant(this.prisma, tenantId, (tx) =>
-        tx.order.findMany({ where: { contactId: options.contactId }, orderBy: { createdAt: 'desc' }, take: 5 }),
-      );
-
+    if (orders && options.contactId) {
       // Match an explicit order ref in the question, then fall back to recent history.
       const normalizedQ = normalizeRef(question);
       let matchedOrder = orders.find((o) => o.extRef && normalizedQ.includes(normalizeRef(o.extRef)));

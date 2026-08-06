@@ -73,6 +73,8 @@ export class KbService {
             { body: { contains: w, mode: 'insensitive' as const } },
           ]),
         },
+        // Return the most-cited (most useful) articles first rather than arbitrary rows.
+        orderBy: [{ citedCount: 'desc' }, { createdAt: 'desc' }],
         take: limit,
       }),
     );

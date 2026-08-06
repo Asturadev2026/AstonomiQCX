@@ -21,3 +21,5 @@ export * from './dto/conversation';
 export * from './dto/tenant';
 export * from './dto/billing';
 export * from './dto/team-settings';
+
+export { UI_ROLES, UI_ROLE_TO_DB } from './dto/team-settings';
