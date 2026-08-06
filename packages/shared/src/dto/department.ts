@@ -20,3 +20,9 @@ export interface DepartmentCardDto {
   openTicketCount: number;
   execs: DepartmentExecDto[];
 }
+
+export interface CreateDepartmentDto {
+  name: string;
+  icon?: string;
+  color?: string;
+}

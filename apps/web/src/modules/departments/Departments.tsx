@@ -9,8 +9,28 @@ import type { AgentStatus } from '../../lib/api/types';
  * (markup/classes verbatim from docs/AstronomiQ-CX_1.html, styles from
  * styles/prototype.css). Every department card is a real `Department` row;
  * every executive row is a real `User` + live `AgentStatusRow` status; open
- * ticket counts come from a real `groupBy` over `Ticket`.
+ * ticket counts come from a real `groupBy` over `Ticket`. Only 2 real login
+ * users existed in this tenant before this screen — the rest of the roster
+ * was seeded as real, directory-only User rows (no Keycloak login) per the
+ * user's explicit choice, the same way KB articles/macros were seeded with
+ * real content rather than left empty. "Add department" opens a real form
+ * (name/icon/color) and POSTs a real `Department` row — head/executives are
+ * assigned later by editing users, same as the seeded departments today.
  */
+
+const FIELD_STYLE: React.CSSProperties = {
+  width: '100%',
+  background: 'var(--panel)',
+  border: '1px solid var(--line2)',
+  borderRadius: 9,
+  padding: 11,
+  fontSize: 13,
+  outline: 'none',
+  color: 'var(--text)',
+};
+
+const ICON_PRESETS = ['🏢', '💬', '📦', '💳', '🛠️', '🎯', '📣', '⚖️'];
+const COLOR_PRESETS = ['#2563EB', '#16A34A', '#F59E0B', '#DC2626', '#7C3AED', '#0891B2'];
 
 const STATUS_CLASS: Record<AgentStatus, string> = {
   available: 'st-av',
@@ -26,32 +46,99 @@ const STATUS_LABEL: Record<AgentStatus, string> = {
   offline: 'Offline',
 };
 
+function AddDepartmentForm({ onCancel, onSubmit, isSaving }: { onCancel: () => void; onSubmit: (name: string, icon: string, color: string) => void; isSaving: boolean }) {
+  const [name, setName] = useState('');
+  const [icon, setIcon] = useState(ICON_PRESETS[0] ?? '🏢');
+  const [color, setColor] = useState(COLOR_PRESETS[0] ?? '#2563EB');
+
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <h3>New department</h3>
+      <div className="cap">This is real — it's created as soon as you save</div>
+
+      <div className="cop-block" style={{ marginTop: 4 }}>
+        <div className="lbl">Name</div>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Retention" style={FIELD_STYLE} />
+      </div>
+      <div className="cop-block">
+        <div className="lbl">Icon</div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {ICON_PRESETS.map((i) => (
+            <button
+              key={i}
+              type="button"
+              className="btn btn-o"
+              onClick={() => setIcon(i)}
+              style={{ padding: '6px 10px', fontSize: 16, outline: icon === i ? '2px solid var(--brand)' : 'none' }}
+            >
+              {i}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="cop-block">
+        <div className="lbl">Colour</div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {COLOR_PRESETS.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setColor(c)}
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: '50%',
+                background: c,
+                border: color === c ? '2px solid var(--text)' : '2px solid transparent',
+                cursor: 'pointer',
+              }}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          className="btn btn-g"
+          disabled={isSaving}
+          onClick={() => onSubmit(name, icon, color)}
+          style={{ flex: 1, justifyContent: 'center', padding: 12 }}
+        >
+          Save department
+        </button>
+        <button className="btn btn-o" onClick={onCancel} style={{ padding: 12 }}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function Departments() {
   const { data, isLoading, error, refetch } = useDepartments();
-  const createDept = useCreateDepartment();
+  const createDepartment = useCreateDepartment();
   const toast = useToast();
-  const [creating, setCreating] = useState(false);
-  const [name, setName] = useState('');
-  const [icon, setIcon] = useState('🏢');
-  const [color, setColor] = useState('#2563EB');
+  const [showForm, setShowForm] = useState(false);
 
   if (isLoading) return <LoadingState />;
   if (error || !data) return <ErrorState error={error} retry={() => void refetch()} />;
 
-  const handleCreate = () => {
-    if (!name.trim()) return;
-    createDept.mutate(
+  function submitDepartment(name: string, icon: string, color: string) {
+    if (!name.trim()) {
+      toast('Department name is required');
+      return;
+    }
+    createDepartment.mutate(
       { name: name.trim(), icon, color },
       {
-        onSuccess: () => {
-          setName('');
-          setCreating(false);
-          toast('Department created ✓');
+        onSuccess: (created) => {
+          toast(`Department "${created.name}" created ✓`);
+          setShowForm(false);
         },
-        onError: () => toast('Could not create department', 'error'),
+        onError: (err) => toast(err instanceof Error ? err.message : 'Could not create department'),
       },
     );
-  };
+  }
 
   return (
     <>
@@ -62,7 +149,7 @@ export function Departments() {
             Each department has a head, executives, live SLA adherence and current load
           </div>
         </div>
-        <button className="btn btn-g" style={{ marginLeft: 'auto' }} onClick={() => setCreating((s) => !s)}>
+        <button className="btn btn-g" style={{ marginLeft: 'auto' }} onClick={() => setShowForm((v) => !v)}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 5v14M5 12h14" />
           </svg>
@@ -70,39 +157,7 @@ export function Departments() {
         </button>
       </div>
 
-      {creating && (
-        <div className="card" style={{ marginBottom: 16, padding: 14, display: 'flex', gap: 10, alignItems: 'center' }}>
-          <input
-            value={icon}
-            onChange={(e) => setIcon(e.target.value)}
-            style={{ width: 44, textAlign: 'center', background: 'var(--panel)', border: '1px solid var(--line2)', borderRadius: 9, padding: '9px 4px', fontSize: 16 }}
-            placeholder="🏢"
-          />
-          <input
-            autoFocus
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleCreate();
-              if (e.key === 'Escape') setCreating(false);
-            }}
-            placeholder="Department Name (e.g. Quality Assurance)"
-            style={{ flex: 1, background: 'var(--panel)', border: '1px solid var(--line2)', borderRadius: 9, padding: '9px 12px', fontSize: 13 }}
-          />
-          <input
-            type="color"
-            value={color}
-            onChange={(e) => setColor(e.target.value)}
-            style={{ width: 38, height: 38, border: 'none', background: 'none', cursor: 'pointer' }}
-          />
-          <button className="btn btn-g" onClick={handleCreate} disabled={createDept.isPending}>
-            {createDept.isPending ? 'Saving…' : 'Create'}
-          </button>
-          <button className="btn btn-o" onClick={() => setCreating(false)}>
-            Cancel
-          </button>
-        </div>
-      )}
+      {showForm && <AddDepartmentForm onCancel={() => setShowForm(false)} onSubmit={submitDepartment} isSaving={createDepartment.isPending} />}
 
       <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }} id="deptGrid">
         {data.map((d) => (

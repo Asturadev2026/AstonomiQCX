@@ -1,16 +1,67 @@
 import { useEffect, useState } from 'react';
-import { useQa } from '../../lib/api/hooks';
+import { useConversationThread, useQa } from '../../lib/api/hooks';
 import { ErrorState, LoadingState } from '../../components/states';
 import { Modal } from '../../components/Modal';
+import type { QaAuditRow } from '../../lib/api/types';
 
 /**
  * Auto QA — exact port of the prototype's #qa section.
  * Markup/classes verbatim, every value from useQa(). (Plan §10.2 pattern)
+ *
+ * "Review" opens a real modal: the QA breakdown for that audit plus the
+ * actual conversation transcript it was scored from (via the same
+ * useConversationThread() the Inbox uses) — not a placeholder.
  */
+
+function ReviewModal({ audit, onClose }: { audit: QaAuditRow; onClose: () => void }) {
+  const { data: thread, isLoading, error } = useConversationThread(audit.conversationId ?? undefined);
+
+  return (
+    <Modal title="QA review" onClose={onClose} width={640}>
+      <div className="qa-row" style={{ paddingLeft: 0 }}>
+        <div className={`qa-score ${audit.scoreClass}`}>{audit.score}</div>
+        <div className="qbar">
+          <div className="qt">
+            <span>{audit.agentLabel}</span>
+            <small>vs {audit.customerName}</small>
+          </div>
+          <div className="qsub">
+            <span>
+              Intent: <b>{audit.category}</b>
+            </span>
+            <span>
+              Empathy: <b>{audit.empathy}</b>
+            </span>
+            <span>
+              Resolution: <b>{audit.resolution}</b>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 16, borderTop: '1px solid var(--line2)', paddingTop: 12 }}>
+        <div className="lbl" style={{ marginBottom: 8 }}>
+          Transcript
+        </div>
+        {!audit.conversationId && <div className="cap">No linked conversation for this audit.</div>}
+        {audit.conversationId && isLoading && <div className="cap">Loading transcript…</div>}
+        {audit.conversationId && error && <div className="cap">Could not load the transcript.</div>}
+        {thread?.messages.map((m, i) => (
+          <div key={i} style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}>
+              {m.role === 'cust' ? audit.customerName : m.role === 'bot' ? 'Astra AI' : audit.agentLabel} · {m.time}
+            </div>
+            <div style={{ fontSize: 13.5 }}>{m.text}</div>
+          </div>
+        ))}
+      </div>
+    </Modal>
+  );
+}
 
 export function AutoQA() {
   const { data, isLoading, error, refetch } = useQa();
-  const [showTrail, setShowTrail] = useState(false);
+  const [reviewingAudit, setReviewingAudit] = useState<QaAuditRow | null>(null);
 
   const [barsOn, setBarsOn] = useState(false);
   useEffect(() => {
@@ -94,7 +145,7 @@ export function AutoQA() {
                 </span>
               </div>
             </div>
-            <button className="btn btn-o" onClick={() => setShowTrail(true)}>
+            <button className="btn btn-o" onClick={() => setReviewingAudit(q)}>
               Review
             </button>
           </div>
@@ -144,6 +195,8 @@ export function AutoQA() {
           </div>
         </div>
       </div>
+
+      {reviewingAudit && <ReviewModal audit={reviewingAudit} onClose={() => setReviewingAudit(null)} />}
     </>
   );
 }

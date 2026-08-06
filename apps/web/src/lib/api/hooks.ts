@@ -30,7 +30,10 @@ import type {
   CreateKbArticleDto,
   CreateNumberDidDto,
   ContactCentreKpis,
+  CreateDepartmentDto,
   CreateMacroDto,
+  CreateRuleDto,
+  CreateServiceVisitDto,
   CreateTicketDto,
   DepartmentCardDto,
   DialerCampaignDto,
@@ -636,6 +639,16 @@ export function useRules() {
   });
 }
 
+export function useCreateRule() {
+  const queryClient = useQueryClient();
+  return useMutation<RuleDto, Error, CreateRuleDto>({
+    mutationFn: (payload) => post('/rules', payload),
+    onSuccess: (created) => {
+      queryClient.setQueryData<RuleDto[]>(['rules'], (rules) => [...(rules ?? []), created]);
+    },
+  });
+}
+
 export function useToggleRule() {
   const queryClient = useQueryClient();
   return useMutation<RuleDto, Error, { id: string }>({
@@ -775,9 +788,11 @@ export function useDepartments() {
 
 export function useCreateDepartment() {
   const queryClient = useQueryClient();
-  return useMutation<DepartmentCardDto, Error, { name: string; icon?: string; color?: string }>({
+  return useMutation<DepartmentCardDto, Error, CreateDepartmentDto>({
     mutationFn: (payload) => post('/departments', payload),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['departments'] }),
+    onSuccess: (created) => {
+      queryClient.setQueryData<DepartmentCardDto[]>(['departments'], (rows) => [...(rows ?? []), created]);
+    },
   });
 }
 
@@ -987,6 +1002,17 @@ export function useFieldServiceVisits() {
   return useQuery<ServiceVisitDto[]>({
     queryKey: ['field-service', 'visits'],
     queryFn: () => api('/field-service/visits'),
+  });
+}
+
+export function useCreateServiceVisit() {
+  const queryClient = useQueryClient();
+  return useMutation<ServiceVisitDto, Error, CreateServiceVisitDto>({
+    mutationFn: (payload) => post('/field-service/visits', payload),
+    onSuccess: (created) => {
+      queryClient.setQueryData<ServiceVisitDto[]>(['field-service', 'visits'], (rows) => [...(rows ?? []), created]);
+      void queryClient.invalidateQueries({ queryKey: ['field-service', 'kpis'] });
+    },
   });
 }
 

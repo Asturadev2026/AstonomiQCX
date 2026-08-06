@@ -32,3 +32,11 @@ export interface RuleDto {
   actions: RuleAction[] | null;
   runs: number;
 }
+
+export interface CreateRuleDto {
+  name: string;
+  description?: string;
+  trigger: string;
+  conditions: RuleConditions;
+  actions: RuleAction[];
+}

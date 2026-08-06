@@ -9,6 +9,7 @@ export interface QaKpis {
 }
 export interface QaAuditRow {
   id: string;
+  conversationId: string | null;
   agentLabel: string;
   customerName: string;
   score: number;
@@ -114,6 +115,7 @@ export class QaService {
         const agentLabel = r.agentUser?.name ?? `Astra AI · ${CHANNEL_LABELS[breakdown.channel ?? ''] ?? 'Bot'}`;
         return {
           id: r.id,
+          conversationId: r.conversationId,
           agentLabel,
           customerName: r.contact?.name ?? 'Unknown customer',
           score: r.score ?? 0,

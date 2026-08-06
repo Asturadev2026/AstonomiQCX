@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { getPrisma, withTenant, type Rule } from '@aq/db';
-import type { RuleAction, RuleConditions, RuleDto } from '@aq/shared';
+import type { CreateRuleDto, RuleAction, RuleConditions, RuleDto } from '@aq/shared';
 import { DEFAULT_RULES, TICKET_RULE_TRIGGERS } from './default-rules';
 
 function toDto(rule: Rule): RuleDto {
@@ -50,6 +50,23 @@ export class RulesService {
         ),
       );
       return created.map(toDto);
+    });
+  }
+
+  async create(tenantId: string, dto: CreateRuleDto): Promise<RuleDto> {
+    return withTenant(this.prisma, tenantId, async (tx) => {
+      const created = await tx.rule.create({
+        data: {
+          tenantId,
+          name: dto.name,
+          description: dto.description,
+          enabled: true,
+          trigger: dto.trigger,
+          conditions: dto.conditions as object,
+          actions: dto.actions as unknown as object,
+        },
+      });
+      return toDto(created);
     });
   }
 
