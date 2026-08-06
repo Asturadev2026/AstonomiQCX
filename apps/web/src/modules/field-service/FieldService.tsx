@@ -1,4 +1,5 @@
-import { useFieldServiceKpis, useFieldServiceVisits } from '../../lib/api/hooks';
+import { useState } from 'react';
+import { useContacts, useCreateServiceVisit, useFieldServiceKpis, useFieldServiceVisits } from '../../lib/api/hooks';
 import { ErrorState, LoadingState } from '../../components/states';
 import { useToast } from '../../components/Toast';
 import type { ServiceVisitDto } from '../../lib/api/types';
@@ -9,9 +10,29 @@ import type { ServiceVisitDto } from '../../lib/api/types';
  * styles/prototype.css). Fully real, no gaps: the `ServiceVisit` model
  * already had everything needed (kind/address/slot/technician/status), so
  * every KPI and every visit row here is real data, not a fabricated demo.
- * "Schedule visit" stays a toast — no add-visit form built, same precedent
- * as other "+ New X" buttons across the app.
+ * "Schedule visit" opens a real form and POSTs a real `ServiceVisit` row —
+ * the contact link reuses the same ContactOption search as the Topbar's
+ * "test as this customer" picker.
  */
+
+const FIELD_STYLE: React.CSSProperties = {
+  width: '100%',
+  background: 'var(--panel)',
+  border: '1px solid var(--line2)',
+  borderRadius: 9,
+  padding: 11,
+  fontSize: 13,
+  outline: 'none',
+  color: 'var(--text)',
+};
+
+const VISIT_KINDS = ['installation', 'repair', 'amc', 'pickup'];
+const VISIT_KIND_LABELS: Record<string, string> = {
+  installation: 'Installation',
+  repair: 'Repair',
+  amc: 'AMC',
+  pickup: 'Pickup',
+};
 
 const KIND_ICON: Record<string, { icon: string; color: string }> = {
   installation: { icon: '🔧', color: '#2563EB' },
@@ -73,16 +94,106 @@ function VisitRow({ v }: { v: ServiceVisitDto }) {
   );
 }
 
+function ScheduleVisitForm({ onCancel, onSubmit, isSaving }: { onCancel: () => void; onSubmit: (kind: string, contactId: string, address: string, slot: string, technician: string) => void; isSaving: boolean }) {
+  const [kind, setKind] = useState(VISIT_KINDS[0] ?? 'installation');
+  const [contactId, setContactId] = useState('');
+  const [address, setAddress] = useState('');
+  const [slot, setSlot] = useState('');
+  const [technician, setTechnician] = useState('');
+  const { data: contacts } = useContacts('');
+
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <h3>Schedule visit</h3>
+      <div className="cap">This is real — it's created as soon as you save</div>
+
+      <div className="cop-block" style={{ marginTop: 4 }}>
+        <div className="lbl">Kind</div>
+        <select value={kind} onChange={(e) => setKind(e.target.value)} style={FIELD_STYLE}>
+          {VISIT_KINDS.map((k) => (
+            <option key={k} value={k}>
+              {VISIT_KIND_LABELS[k]}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="cop-block">
+        <div className="lbl">Contact (optional)</div>
+        <select value={contactId} onChange={(e) => setContactId(e.target.value)} style={FIELD_STYLE}>
+          <option value="">No linked contact</option>
+          {contacts?.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+              {c.phone ? ` (${c.phone})` : ''}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="cop-block">
+        <div className="lbl">Address</div>
+        <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Visit address" style={FIELD_STYLE} />
+      </div>
+      <div className="cop-block">
+        <div className="lbl">Slot</div>
+        <input type="datetime-local" value={slot} onChange={(e) => setSlot(e.target.value)} style={FIELD_STYLE} />
+      </div>
+      <div className="cop-block">
+        <div className="lbl">Technician</div>
+        <input value={technician} onChange={(e) => setTechnician(e.target.value)} placeholder="Technician name" style={FIELD_STYLE} />
+      </div>
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          className="btn btn-g"
+          disabled={isSaving}
+          onClick={() => onSubmit(kind, contactId, address, slot, technician)}
+          style={{ flex: 1, justifyContent: 'center', padding: 12 }}
+        >
+          Save visit
+        </button>
+        <button className="btn btn-o" onClick={onCancel} style={{ padding: 12 }}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function FieldService() {
   const kpis = useFieldServiceKpis();
   const visits = useFieldServiceVisits();
+  const createVisit = useCreateServiceVisit();
   const toast = useToast();
+  const [showForm, setShowForm] = useState(false);
 
   if (kpis.isLoading || visits.isLoading) return <LoadingState />;
   if (kpis.error || !kpis.data) return <ErrorState error={kpis.error} retry={() => void kpis.refetch()} />;
   if (visits.error || !visits.data) return <ErrorState error={visits.error} retry={() => void visits.refetch()} />;
 
   const k = kpis.data;
+
+  function submitVisit(kind: string, contactId: string, address: string, slot: string, technician: string) {
+    if (!slot) {
+      toast('A slot time is required');
+      return;
+    }
+    createVisit.mutate(
+      {
+        kind,
+        contactId: contactId || undefined,
+        address: address.trim() || undefined,
+        slot: new Date(slot).toISOString(),
+        technician: technician.trim() || undefined,
+      },
+      {
+        onSuccess: () => {
+          toast('Visit scheduled ✓');
+          setShowForm(false);
+        },
+        onError: (err) => toast(err instanceof Error ? err.message : 'Could not schedule visit'),
+      },
+    );
+  }
 
   return (
     <>
@@ -134,13 +245,14 @@ export function FieldService() {
             Installations, warranty repairs &amp; AMC — auto-assigned by location &amp; skill
           </div>
         </div>
-        <button className="btn btn-g" style={{ marginLeft: 'auto' }} onClick={() => toast('Schedule new visit…')}>
+        <button className="btn btn-g" style={{ marginLeft: 'auto' }} onClick={() => setShowForm((v) => !v)}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 5v14M5 12h14" />
           </svg>
           Schedule visit
         </button>
       </div>
+      {showForm && <ScheduleVisitForm onCancel={() => setShowForm(false)} onSubmit={submitVisit} isSaving={createVisit.isPending} />}
       <div>
         {visits.data.map((v) => (
           <VisitRow v={v} key={v.id} />

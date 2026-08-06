@@ -1,11 +1,37 @@
 import { Injectable } from '@nestjs/common';
 import { getPrisma, withTenant } from '@aq/db';
-import type { FieldServiceKpis, ServiceVisitDto } from '@aq/shared';
+import type { CreateServiceVisitDto, FieldServiceKpis, ServiceVisitDto } from '@aq/shared';
 
 /** Real field service data — Guide's "Field Service" module. Fully backed by the existing `ServiceVisit` model, no gaps. */
 @Injectable()
 export class FieldServiceService {
   private prisma = getPrisma();
+
+  async create(tenantId: string, dto: CreateServiceVisitDto): Promise<ServiceVisitDto> {
+    return withTenant(this.prisma, tenantId, async (tx) => {
+      const created = await tx.serviceVisit.create({
+        data: {
+          tenantId,
+          kind: dto.kind,
+          contactId: dto.contactId,
+          address: dto.address,
+          slot: new Date(dto.slot),
+          technician: dto.technician,
+          status: 'scheduled',
+        },
+        include: { contact: true },
+      });
+      return {
+        id: created.id,
+        kind: created.kind,
+        contactName: created.contact?.name ?? null,
+        address: created.address,
+        slot: created.slot ? created.slot.toISOString() : null,
+        technician: created.technician,
+        status: created.status,
+      };
+    });
+  }
 
   async kpis(tenantId: string): Promise<FieldServiceKpis> {
     return withTenant(this.prisma, tenantId, async (tx) => {

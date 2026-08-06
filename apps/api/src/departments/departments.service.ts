@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { getPrisma, withTenant } from '@aq/db';
-import type { AgentStatus, DepartmentCardDto, DepartmentExecDto } from '@aq/shared';
+import { getPrisma, withTenant, type Department } from '@aq/db';
+import type { AgentStatus, CreateDepartmentDto, DepartmentCardDto, DepartmentExecDto } from '@aq/shared';
 
 function initials(name: string): string {
   return name
@@ -25,6 +25,23 @@ const DEFAULT_DEPARTMENTS = [
 @Injectable()
 export class DepartmentsService {
   private prisma = getPrisma();
+
+  async create(tenantId: string, dto: CreateDepartmentDto): Promise<DepartmentCardDto> {
+    const created: Department = await withTenant(this.prisma, tenantId, (tx) =>
+      tx.department.create({
+        data: { tenantId, name: dto.name, icon: dto.icon || '🏢', color: dto.color || '#2563EB' },
+      }),
+    );
+    return {
+      id: created.id,
+      name: created.name,
+      icon: created.icon ?? '🏢',
+      color: created.color ?? '#2563EB',
+      headName: null,
+      openTicketCount: 0,
+      execs: [],
+    };
+  }
 
   async list(tenantId: string): Promise<DepartmentCardDto[]> {
     return withTenant(this.prisma, tenantId, async (tx) => {
@@ -72,28 +89,6 @@ export class DepartmentsService {
           execs,
         };
       });
-    });
-  }
-
-  async create(tenantId: string, dto: { name: string; icon?: string; color?: string }) {
-    return withTenant(this.prisma, tenantId, async (tx) => {
-      const dept = await tx.department.create({
-        data: {
-          tenantId,
-          name: dto.name,
-          icon: dto.icon || '🏢',
-          color: dto.color || '#2563EB',
-        },
-      });
-      return {
-        id: dept.id,
-        name: dept.name,
-        icon: dept.icon ?? '🏢',
-        color: dept.color ?? '#2563EB',
-        headName: null,
-        openTicketCount: 0,
-        execs: [],
-      };
     });
   }
 }

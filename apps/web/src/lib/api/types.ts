@@ -195,6 +195,7 @@ export interface QaKpis {
 }
 export interface QaAuditRow {
   id: string;
+  conversationId: string | null;
   agentLabel: string;
   customerName: string;
   score: number;
@@ -441,8 +442,8 @@ export type { AgentFlowDto, FlowNode, FlowNodeConfig, FlowNodeType, UpdateFlowNo
 // POST /api/v1/agent-flows/:id/nodes, /:nodeId/delete, /:nodeId/move, /:nodeId/next
 export type { AddFlowNodeDto, MoveFlowNodeDto, SetNextNodeDto } from '@aq/shared';
 
-// GET /api/v1/rules, PATCH /api/v1/rules/:id/toggle
-export type { RuleAction, RuleCondition, RuleConditions, RuleDto } from '@aq/shared';
+// GET /api/v1/rules, POST /api/v1/rules, PATCH /api/v1/rules/:id/toggle
+export type { CreateRuleDto, RuleAction, RuleActionType, RuleCondition, RuleConditionOp, RuleConditions, RuleDto } from '@aq/shared';
 
 // GET /api/v1/kb, POST /api/v1/kb, PATCH /api/v1/kb/:id/view
 export type { CreateKbArticleDto, UpdateKbArticleDto } from '@aq/shared';
@@ -465,8 +466,8 @@ export type { CreateMacroDto, MacroDto } from '@aq/shared';
 // GET /api/v1/sla/policies, /sla/kpis, /sla/scorecard, /sla/breaches, /sla/escalation-matrix
 export type { CreateSlaPolicyDto, EscalationLevelDto, SlaBreachRow, SlaKpis, SlaPolicyDto, SlaScorecardRow } from '@aq/shared';
 
-// GET /api/v1/departments
-export type { AgentStatus, DepartmentCardDto, DepartmentExecDto } from '@aq/shared';
+// GET /api/v1/departments, POST /api/v1/departments
+export type { AgentStatus, CreateDepartmentDto, DepartmentCardDto, DepartmentExecDto } from '@aq/shared';
 
 // GET /api/v1/workforce/board, /workforce/roster
 export type { RosterRowDto, WorkforceBoardDto, WorkforcePersonDto, WorkforceRosterDto, WorkforceStatusCounts } from '@aq/shared';
@@ -504,8 +505,8 @@ export type {
   UpdateIvrNodeDto,
 } from '@aq/shared';
 
-// GET /api/v1/field-service/kpis, /field-service/visits
-export type { FieldServiceKpis, ServiceVisitDto } from '@aq/shared';
+// GET /api/v1/field-service/kpis, /field-service/visits, POST /field-service/visits
+export type { CreateServiceVisitDto, FieldServiceKpis, ServiceVisitDto } from '@aq/shared';
 
 // GET /api/v1/priority-matrix
 export type { PriorityLevelInfoDto, PriorityMatrixCellDto, PriorityMatrixDto } from '@aq/shared';

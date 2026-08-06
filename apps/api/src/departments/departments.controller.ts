@@ -1,6 +1,7 @@
-import { Controller, Get, Post, Body, Req } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req } from '@nestjs/common';
 import type { TenantScopedRequest } from '../tenancy/tenant.middleware';
 import { DepartmentsService } from './departments.service';
+import { CreateDepartmentDto } from './create-department.dto';
 
 /** Not guarded yet, same rationale as the other AI Studio/Service Ops controllers. */
 @Controller('departments')
@@ -13,7 +14,7 @@ export class DepartmentsController {
   }
 
   @Post()
-  create(@Req() req: TenantScopedRequest, @Body() dto: { name: string; icon?: string; color?: string }) {
+  create(@Req() req: TenantScopedRequest, @Body() dto: CreateDepartmentDto) {
     return this.svc.create(req.tenantId, dto);
   }
 }

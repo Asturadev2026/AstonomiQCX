@@ -16,3 +16,11 @@ export interface ServiceVisitDto {
   technician: string | null;
   status: string | null;
 }
+
+export interface CreateServiceVisitDto {
+  kind: string;
+  contactId?: string;
+  address?: string;
+  slot: string; // ISO datetime
+  technician?: string;
+}
