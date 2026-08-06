@@ -23,12 +23,17 @@ const NEXT_STATUS: Partial<Record<TicketRow['status'], TicketRow['status']>> = {
   in_progress: 'waiting',
   waiting: 'resolved',
 };
-const PRIORITY_META: Record<TicketRow['priority'], { label: string; pill: string }> = {
+const PRIORITY_META: Record<string, { label: string; pill: string }> = {
   p1: { label: 'Urgent', pill: 'p-hi' },
   p2: { label: 'High', pill: 'p-hi' },
   p3: { label: 'Medium', pill: 'p-md' },
   p4: { label: 'Low', pill: 'p-lo' },
+  urgent: { label: 'Urgent', pill: 'p-hi' },
+  high: { label: 'High', pill: 'p-hi' },
+  medium: { label: 'Medium', pill: 'p-md' },
+  low: { label: 'Low', pill: 'p-lo' },
 };
+const DEFAULT_PRIORITY = { label: 'Medium', pill: 'p-md' };
 
 function ticketsForStage(tickets: TicketRow[], status: TicketRow['status']) {
   if (status === 'resolved') return tickets.filter((t) => t.status === 'resolved' || t.status === 'closed');
@@ -106,14 +111,14 @@ export function TicketsBoard() {
             <span className="cap" style={{ marginRight: 2, marginBottom: 0 }}>
               Priority
             </span>
-            {(Object.keys(PRIORITY_META) as TicketRow['priority'][]).map((p) => (
+            {(['p1', 'p2', 'p3', 'p4'] as TicketRow['priority'][]).map((p) => (
               <button
                 key={p}
                 type="button"
                 className={`prio prio-select ${p}${priority === p ? ' is-selected' : ''}`}
                 onClick={() => setPriority(p)}
               >
-                {p.toUpperCase()} — {PRIORITY_META[p].label}
+                {p.toUpperCase()} — {PRIORITY_META[p]?.label ?? ''}
               </button>
             ))}
           </div>
@@ -134,7 +139,7 @@ export function TicketsBoard() {
                 <div style={{ textAlign: 'center', color: 'var(--muted2)', fontSize: 12, padding: '20px 0' }}>No tickets</div>
               ) : (
                 items.map((t) => {
-                  const pri = PRIORITY_META[t.priority];
+                  const pri = (t.priority && PRIORITY_META[t.priority.toLowerCase()]) ?? DEFAULT_PRIORITY;
                   const next = NEXT_STATUS[t.status];
                   return (
                     <div className="tkt" key={t.id}>

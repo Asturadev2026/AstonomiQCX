@@ -68,12 +68,25 @@ export class FlowExecutionService {
     private tickets: TicketsService,
   ) {}
 
-  async run(tenantId: string, question: string, options: RunOptions = {}): Promise<AstraAnswerDto> {
+  async run(
+    tenantId: string,
+    question: string,
+    options: RunOptions = {},
+    /** Pass the already-fetched flow from AiService to avoid a redundant DB round-trip. */
+    preloadedFlow?: import('@aq/db').AgentFlow | null,
+    /**
+     * Injectable LLM function — defaults to llmComplete (buffered). Pass a streaming
+     * variant from the SSE controller so the final answer streams token-by-token
+     * without modifying the rest of the flow logic.
+     */
+    llmFn?: (prompt: string) => Promise<string>,
+  ): Promise<AstraAnswerDto> {
     if (!isConfigured()) {
       return { answer: null, escalate: false, configured: false, sources: [], ticketRef: null, visitedNodeIds: [] };
     }
 
-    const flow = await this.flows.findPublishedChatFlow(tenantId);
+    // Use the preloaded flow when available; only fall back to DB when called directly.
+    const flow = preloadedFlow !== undefined ? preloadedFlow : await this.flows.findPublishedChatFlow(tenantId);
     if (!flow) {
       // Caller (AiService) should have checked first — fall back safely rather than 500.
       return { answer: null, escalate: false, configured: false, sources: [], ticketRef: null, visitedNodeIds: [] };
@@ -127,10 +140,54 @@ export class FlowExecutionService {
                 break;
               }
             }
+
+            // Fast keyword-based intent matching — covers ~80% of messages with
+            // zero LLM latency. Only fall through to llmComplete() for messages
+            // that don't match any keyword pattern (genuinely ambiguous).
+            // ── Universal conversational patterns ──
+            // These are matched regardless of the flow's configured intents because
+            // every support bot needs to handle "ok", "thanks", "bye", and menu numbers.
+            const q = question.toLowerCase();
+            const CONVERSATIONAL: Record<string, RegExp> = {
+              thanks: /^\s*(thanks|thank\s*you|thx|ty|dhanyavaad|shukriya|appreciated)\s*[!.]*\s*$/i,
+              farewell: /^\s*(bye|goodbye|good\s*bye|see\s*you|take\s*care|cya|alvida)\s*[!.]*\s*$/i,
+              acknowledge: /^\s*(ok|okay|k|alright|sure|got\s*it|understood|fine|right|hm+|cool|great|nice|perfect|no\s*problem|np|accha|theek\s*hai|haan|yes|no|yeah|yep|nope|nah|hmm+)\s*[!.]*\s*$/i,
+            };
+
+            // Bare numeric menu replies ("1", "2", etc.)
+            if (/^\s*\d{1,2}\s*$/.test(q)) {
+              ctx.intent = 'acknowledge';
+              break;
+            }
+            for (const [intent, re] of Object.entries(CONVERSATIONAL)) {
+              if (re.test(q)) {
+                ctx.intent = intent;
+                break;
+              }
+            }
+            if (ctx.intent) break;
+
+            // ── Flow-configured intent keywords ──
+            const keywordMap: Record<string, RegExp> = {
+              track:  /\b(track|where.*order|order.*where|deliver|shipped|shipment|transit|package|parcel|status)\b/i,
+              refund: /\b(refund|money back|reimburs|paid.*back|cashback)\b/i,
+              return: /\b(return|send.*back|give.*back|take.*back|exchange|replace)\b/i,
+              human:  /\b(human|agent|person|speak.*to|talk.*to|real person|live agent|customer.?care|support team)\b/i,
+              greet:  /^(hi|hello|hey|namaste|good (morning|afternoon|evening)|hiya|sup)\b/i,
+            };
+
+            const keywordIntent = intents.find((intent) => keywordMap[intent]?.test(q));
+            if (keywordIntent) {
+              ctx.intent = keywordIntent;
+              break;
+            }
+
+            // Fallback: ask the LLM only when keywords don't resolve the intent.
+            // max_tokens:5 — we only need one word back ("track", "refund", etc.)
             const prompt =
               `Classify the customer's message into exactly one of these intents: ${intents.join(', ')}. ` +
               `Reply with ONLY the intent word, nothing else.\n\nMessage: ${question}`;
-            const reply = (await llmComplete(prompt)).trim().toLowerCase();
+            const reply = (await llmComplete(prompt, 5)).trim().toLowerCase();
             ctx.intent = intents.find((i) => reply.includes(i.toLowerCase())) ?? 'other';
             break;
           }
@@ -192,8 +249,6 @@ export class FlowExecutionService {
             // Refund eligibility is a real, deterministic check against the
             // customer's actual orders — not left to the LLM to guess at —
             // since a wrong "yes you can refund that" is a real-money mistake.
-            // Every other intent still falls through to the LLM-grounded path
-            // below.
             if (ctx.intent === 'refund') {
               return this.buildRefundEligibilityReply(definition, ctx.orders ?? [], visitedNodeIds);
             }
@@ -206,32 +261,65 @@ export class FlowExecutionService {
               return this.buildReturnReply(tenantId, ctx.orders ?? [], question, options, visitedNodeIds);
             }
 
-            // Fetch recent conversation history for multi-turn context
-            const recentMessages = options.conversationId
-              ? await withTenant(this.prisma, tenantId, (tx) =>
-                  tx.message.findMany({
-                    where: { conversationId: options.conversationId },
-                    orderBy: { createdAt: 'desc' },
-                    take: 6,
-                  }),
-                )
-              : [];
-
-            // Resolve a mentioned order ref up front (case/hyphen-insensitive)
-            const normalizedQuestion = normalizeRef(question);
-            let matchedOrder = ctx.orders?.find((o) => o.extRef && normalizedQuestion.includes(normalizeRef(o.extRef)));
-
-            // If not found in current message, inspect recent conversation history for mentioned order refs
-            if (!matchedOrder && recentMessages.length > 0 && ctx.orders?.length) {
-              const combinedHistory = recentMessages.map((m) => normalizeRef(m.body ?? '')).join(' ');
-              matchedOrder = ctx.orders.find((o) => o.extRef && combinedHistory.includes(normalizeRef(o.extRef)));
+            // ── Greeting — instant, no LLM needed ──
+            if (ctx.intent === 'greet') {
+              return {
+                answer: `Hello! 👋 I'm Astra, your support assistant. I can help you track orders, check refund eligibility, arrange returns, or connect you with a human agent. What can I help you with?`,
+                escalate: false,
+                configured: true,
+                sources: [],
+                ticketRef: null,
+                visitedNodeIds,
+              };
             }
 
-            const relevantOrders = matchedOrder ? [matchedOrder] : ctx.orders;
+            // ── Thanks — warm acknowledgment ──
+            if (ctx.intent === 'thanks') {
+              return {
+                answer: `You're welcome! 😊 Is there anything else I can help you with?`,
+                escalate: false,
+                configured: true,
+                sources: [],
+                ticketRef: null,
+                visitedNodeIds,
+              };
+            }
+
+            // ── Farewell — friendly goodbye ──
+            if (ctx.intent === 'farewell') {
+              return {
+                answer: `Goodbye! 👋 Feel free to reach out anytime you need help. Have a great day!`,
+                escalate: false,
+                configured: true,
+                sources: [],
+                ticketRef: null,
+                visitedNodeIds,
+              };
+            }
+
+            // ── Acknowledgment / short reply — guide them to what we can do ──
+            if (ctx.intent === 'acknowledge') {
+              return {
+                answer: `Is there anything else I can help you with? I can assist with:\n\n📦 **Order tracking**\n💰 **Refund eligibility**\n↩️ **Returns**\n👤 **Connect to a human agent**\n\nJust let me know!`,
+                escalate: false,
+                configured: true,
+                sources: [],
+                ticketRef: null,
+                visitedNodeIds,
+              };
+            }
+
+            // ── Tracking — template response from real DB data, no LLM needed ──
+            if (ctx.intent === 'track') {
+              return this.buildTrackingReply(ctx.orders ?? [], question, visitedNodeIds);
+            }
 
             // Handle non-delivery complaint when a customer says "not received" for a delivered order
             const isNonDeliveryComplaint = /not received|didn't get|haven't received|never arrived|missing package|not here/i.test(question);
-            const targetOrder = matchedOrder ?? (relevantOrders?.length === 1 ? relevantOrders[0] : null);
+            const normalizedQuestion = normalizeRef(question);
+            let matchedOrder = ctx.orders?.find((o) => o.extRef && normalizedQuestion.includes(normalizeRef(o.extRef)));
+            const relevantOrders = matchedOrder ? [matchedOrder] : ctx.orders;
+            const targetOrder = matchedOrder ?? (relevantOrders?.length === 1 ? relevantOrders?.[0] : null);
 
             if (isNonDeliveryComplaint && targetOrder && targetOrder.status === 'delivered') {
               const ticket = await this.tickets.create(tenantId, null, {
@@ -251,53 +339,11 @@ export class FlowExecutionService {
               };
             }
 
-            // More than one order genuinely in transit is ambiguous for a tracking
-            // question — "most recent" isn't a safe default when several are equally
-            // "on their way". Ask which one instead of guessing, unless the customer
-            // already named a specific order ref.
-            const inTransitOrders = ctx.orders?.filter((o) => o.status === 'in_transit') ?? [];
-            const looksLikeOrderQuestion =
-              ctx.intent === 'track' ||
-              (ctx.intent === undefined && /order|track|deliver|shipped|shipment|transit|package|parcel/i.test(question));
-
-            // No orders on record for this contact — ask for the order ref rather than
-            // falling through to the LLM which has nothing to ground on and escalates.
-            if (looksLikeOrderQuestion && (!ctx.orders || ctx.orders.length === 0)) {
-              return {
-                answer: `I'd be happy to help track your order! Could you please share your order reference number (e.g. ZK-123)?`,
-                escalate: false,
-                configured: true,
-                sources: [],
-                ticketRef: null,
-                clarifying: true,
-                visitedNodeIds,
-              };
-            }
-
-            if (inTransitOrders.length > 1 && !matchedOrder && looksLikeOrderQuestion) {
-              const refs = inTransitOrders.map((o) => o.extRef ?? o.id).join(' or ');
-              return {
-                answer: `You have ${inTransitOrders.length} orders currently in transit — ${refs}. Which one would you like to check?`,
-                escalate: false,
-                configured: true,
-                sources: [],
-                ticketRef: null,
-                clarifying: true,
-                visitedNodeIds,
-              };
-            }
-
+            // ── LLM fallback — only for genuinely ambiguous questions ──
+            // KB search is the only DB call needed here.
             const articles = await this.kb.searchByKeyword(tenantId, question);
+
             const kbContext = articles.map((a) => `# ${a.title}\n${a.body}`).join('\n---\n');
-            const historyBlock = recentMessages.length
-              ? `Recent conversation history (most recent last):\n` +
-                recentMessages
-                  .slice()
-                  .reverse()
-                  .map((m) => `- ${m.senderType === 'customer' ? 'Customer' : 'Astra'}: ${m.body ?? ''}`)
-                  .join('\n') +
-                `\n\n`
-              : '';
 
             const orderLine = relevantOrders?.length
               ? `Their orders, most recent first:\n` +
@@ -314,13 +360,13 @@ export class FlowExecutionService {
             const styleInstruction = options.channel === 'voice' ? `${VOICE_STYLE_INSTRUCTION} ` : '';
             const prompt =
               `You are Astra, the support assistant. ${styleInstruction}The customer's detected intent is ` +
-              `"${ctx.intent ?? 'other'}". ${orderLine}${historyBlock}Answer the customer ONLY using the knowledge base context ` +
-              `below (and the order/conversation details above if relevant). Reply in ${language}. If the answer is not in the ` +
+              `"${ctx.intent ?? 'other'}". ${orderLine}Answer the customer ONLY using the knowledge base context ` +
+              `below (and the order details above if relevant). Reply in ${language}. If the answer is not in the ` +
               `context, or the issue needs a human (like a refund or complaint), reply with exactly the word ` +
               `ESCALATE.\n\nContext:\n${kbContext || '(no matching knowledge base articles)'}\n\n` +
               `Customer question: ${question}`;
 
-            const reply = await llmComplete(prompt);
+            const reply = await (llmFn ?? llmComplete)(prompt);
             const escalate = reply.trim().toUpperCase() === 'ESCALATE';
             const answer = options.channel === 'voice' ? stripMarkdownForSpeech(reply) : reply;
 
@@ -336,8 +382,9 @@ export class FlowExecutionService {
               ticketRef = ticket.extRef;
             }
 
+            // Fire-and-forget — don't block the response on citation recording
             if (!escalate && articles.length > 0) {
-              await this.kb.recordCitations(tenantId, articles.map((a) => a.id));
+              this.kb.recordCitations(tenantId, articles.map((a) => a.id)).catch(() => {});
             }
 
             return {
@@ -479,6 +526,87 @@ export class FlowExecutionService {
       configured: true,
       sources: [],
       ticketRef: ticket.extRef,
+      visitedNodeIds,
+    };
+  }
+
+  /**
+   * Instant tracking reply built from real DB data — no LLM call.
+   * Covers: no orders, single order, multiple orders, specific ref match.
+   */
+  private buildTrackingReply(
+    orders: Order[],
+    question: string,
+    visitedNodeIds: string[],
+  ): AstraAnswerDto {
+    if (orders.length === 0) {
+      return {
+        answer: `I'd be happy to help track your order! Could you please share your order reference number (e.g. ZK-123)?`,
+        escalate: false,
+        configured: true,
+        sources: [],
+        ticketRef: null,
+        clarifying: true,
+        visitedNodeIds,
+      };
+    }
+
+    // Check if customer mentioned a specific order ref
+    const normalizedQ = normalizeRef(question);
+    const matchedOrder = orders.find((o) => o.extRef && normalizedQ.includes(normalizeRef(o.extRef)));
+
+    const STATUS_LABELS: Record<string, string> = {
+      in_transit: '🚚 In Transit — your order is on its way',
+      delivered: '✅ Delivered',
+      cancelled: '❌ Cancelled',
+      processing: '⏳ Processing — we\'re preparing your order',
+      shipped: '📦 Shipped — your order has left the warehouse',
+      returned: '↩️ Returned',
+      refunded: '💰 Refunded',
+    };
+
+    const formatOrder = (o: Order): string => {
+      const ref = o.extRef ?? o.id;
+      const desc = o.description ?? 'item';
+      const status = STATUS_LABELS[o.status ?? ''] ?? `Status: ${o.status ?? 'unknown'}`;
+      const amount = o.amount ? `₹${o.amount}` : '';
+      return `**${ref}** — "${desc}" ${amount}\n${status}`;
+    };
+
+    if (matchedOrder) {
+      return {
+        answer: `Here's the status of your order:\n\n${formatOrder(matchedOrder)}`,
+        escalate: false,
+        configured: true,
+        sources: [],
+        ticketRef: null,
+        visitedNodeIds,
+      };
+    }
+
+    // Multiple in-transit orders — ask which one
+    const inTransit = orders.filter((o) => o.status === 'in_transit');
+    if (inTransit.length > 1) {
+      const refs = inTransit.map((o) => o.extRef ?? o.id).join(' or ');
+      return {
+        answer: `You have ${inTransit.length} orders currently in transit — ${refs}. Which one would you like to check?`,
+        escalate: false,
+        configured: true,
+        sources: [],
+        ticketRef: null,
+        clarifying: true,
+        visitedNodeIds,
+      };
+    }
+
+    // Single order or single in-transit — show it
+    const target = inTransit.length === 1 ? inTransit[0] : orders[0];
+    return {
+      answer: `Here's the latest on your order:\n\n${formatOrder(target!)}`,
+      escalate: false,
+      configured: true,
+      sources: [],
+      ticketRef: null,
       visitedNodeIds,
     };
   }

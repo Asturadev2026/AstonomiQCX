@@ -76,6 +76,16 @@ const NODE_TEMPLATES: Record<FlowNodeType, Omit<FlowNode, 'id' | 'nextId'>> = {
 /** Real persistence for the Agent Builder's flow graph — Guide §1.3/§12. */
 @Injectable()
 export class AgentFlowService {
+  /**
+   * Short-lived in-process cache for the published chat flow. Each message from
+   * Chatbot/WhatsApp/Voice calls findPublishedChatFlow(); without a cache that's
+   * one full withTenant() transaction (~1 s from India → us-east-1) per message.
+   * 30-second TTL is far shorter than any human can notice, but long enough to
+   * serve a burst of messages in a single conversation from one fetch.
+   * Cache is invalidated immediately when publish() is called.
+   */
+  private readonly flowCache = new Map<string, { flow: AgentFlow | null; expiresAt: number }>();
+  private readonly FLOW_CACHE_TTL_MS = 30_000;
   private prisma = getPrisma();
 
   /** The tenant's chat flow, auto-created from the default template if none exists yet. */
@@ -203,14 +213,26 @@ export class AgentFlowService {
   async publish(tenantId: string, flowId: string): Promise<AgentFlowDto> {
     return withTenant(this.prisma, tenantId, async (tx) => {
       const updated = await tx.agentFlow.update({ where: { id: flowId }, data: { status: 'published' } });
+      // Invalidate immediately so the very next message sees the new flow.
+      this.flowCache.delete(tenantId);
       return toDto(updated);
     });
   }
 
-  /** Used by FlowExecutionService — null if the tenant has no published chat flow. */
+  /**
+   * Used by AiService and FlowExecutionService on every incoming message.
+   * Results are cached per-tenant for FLOW_CACHE_TTL_MS to eliminate a full
+   * withTenant() round-trip (~1 s from India → us-east-1) on the hot path.
+   */
   async findPublishedChatFlow(tenantId: string): Promise<AgentFlow | null> {
-    return withTenant(this.prisma, tenantId, (tx) =>
+    const cached = this.flowCache.get(tenantId);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.flow;
+    }
+    const flow = await withTenant(this.prisma, tenantId, (tx) =>
       tx.agentFlow.findFirst({ where: { kind: 'chat', status: 'published' }, orderBy: { id: 'asc' } }),
     );
+    this.flowCache.set(tenantId, { flow, expiresAt: Date.now() + this.FLOW_CACHE_TTL_MS });
+    return flow;
   }
 }

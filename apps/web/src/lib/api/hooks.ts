@@ -1,3 +1,4 @@
+import { useState, useRef, useCallback } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { getActiveTenant } from '../../state/auth';
 import type {
@@ -461,6 +462,103 @@ export function useAskAstra() {
     mutationFn: (payload) => post('/ai/ask', payload),
   });
 }
+
+/**
+ * Streaming variant of useAskAstra — connects to POST /ai/ask/stream (SSE)
+ * and yields tokens as they arrive, so the chatbot renders text immediately
+ * instead of waiting for the full response.
+ *
+ * Usage:
+ *   const { send, streamText, streaming, result } = useAskAstraStream();
+ *   send({ question, contactId, channel });   // starts a stream
+ *   // streamText grows as tokens arrive; result is set when done
+ */
+export function useAskAstraStream() {
+  const [streaming, setStreaming] = useState(false);
+  const [streamText, setStreamText] = useState('');
+  const [result, setResult] = useState<AstraAnswer | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const send = useCallback(
+    (payload: AskAstraPayload, callbacks?: { onDone?: (r: AstraAnswer) => void; onError?: (e: Error) => void }) => {
+      // Cancel any in-flight stream
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      setStreaming(true);
+      setStreamText('');
+      setResult(null);
+
+      (async () => {
+        try {
+          const res = await fetch('/api/v1/ai/ask/stream', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...tenantHeaders() },
+            body: JSON.stringify(payload),
+            signal: controller.signal,
+          });
+
+          if (!res.ok || !res.body) {
+            throw new Error(`POST /api/v1/ai/ask/stream failed: ${res.status}`);
+          }
+
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buf = '';
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+
+            // SSE lines are "data: {...}\n\n"
+            const lines = buf.split('\n');
+            buf = lines.pop() ?? '';
+
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
+              const raw = line.slice(6).trim();
+              if (!raw) continue;
+              try {
+                const event = JSON.parse(raw) as {
+                  delta?: string;
+                  done?: boolean;
+                  error?: string;
+                } & Partial<AstraAnswer>;
+
+                if (event.error) {
+                  throw new Error(event.error);
+                }
+                if (event.delta) {
+                  setStreamText((t) => t + event.delta);
+                }
+                if (event.done) {
+                  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                  const { delta: _d, done: _dn, error: _e, ...answer } = event as Record<string, unknown>;
+                  const finalResult = answer as unknown as AstraAnswer;
+                  setResult(finalResult);
+                  setStreaming(false);
+                  callbacks?.onDone?.(finalResult);
+                }
+              } catch {
+                // malformed JSON line — skip
+              }
+            }
+          }
+        } catch (err) {
+          if ((err as Error).name === 'AbortError') return; // intentional cancel
+          setStreaming(false);
+          callbacks?.onError?.(err as Error);
+        }
+      })();
+    },
+    [],
+  );
+
+  return { send, streaming, streamText, result };
+}
+
 
 export function useAgentFlow() {
   return useQuery<AgentFlowDto>({

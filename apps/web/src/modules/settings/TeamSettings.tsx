@@ -3,7 +3,8 @@ import { useCreateInvite, useDepartments, useSettings, useToggleSetting, useUpda
 import { useToast } from '../../components/Toast';
 import { ErrorState, LoadingState } from '../../components/states';
 import type { SettingsToggles, UiRoleName } from '../../lib/api/types';
-import { UI_ROLES } from '../../lib/api/types';
+
+const UI_ROLES = ['Admin', 'Manager', 'Executive'] as const;
 
 const TOGGLE_META: { key: keyof SettingsToggles; title: string; desc: string }[] = [
   { key: 'autoResolve', title: 'Auto-resolve with AI', desc: 'Let Astra close routine tickets' },

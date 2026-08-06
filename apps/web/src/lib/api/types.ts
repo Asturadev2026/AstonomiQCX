@@ -518,4 +518,3 @@ export type { BillingPayload, InvoiceRow, PlanCard, UsageMeter } from '@aq/share
 
 // GET /api/v1/settings, PATCH /api/v1/settings/toggles/:key, POST /api/v1/settings/invites
 export type { CreateInviteDto, IntegrationCard, InviteDto, SettingsPayload, SettingsToggles, TeamMemberRow, UpdateUserRoleDto, UiRoleName } from '@aq/shared';
-export { UI_ROLES } from '@aq/shared';
