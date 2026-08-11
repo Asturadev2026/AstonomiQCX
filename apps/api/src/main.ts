@@ -20,7 +20,7 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalInterceptors(new ResponseInterceptor());
 
-  await app.listen(env.API_PORT);
+  await app.listen(env.API_PORT, '0.0.0.0');
   // eslint-disable-next-line no-console
   console.log(`AstronomiQ API listening on :${env.API_PORT}`);
 }

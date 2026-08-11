@@ -72,12 +72,7 @@ export function WhatsappBot() {
       { question: msg, contactId: contact?.id, channel: 'whatsapp' },
       {
         onSuccess: (res) => {
-          const reply = !res.configured
-            ? "We're having a temporary issue — please try again shortly."
-            : res.escalate
-              ? `Thanks — I've raised this with our team (ref ${res.ticketRef}). They'll follow up on WhatsApp shortly.`
-              : res.answer ?? '';
-          setMessages((m) => [...m, { dir: 'in', text: reply, time: nowLabel() }]);
+          setMessages((m) => [...m, { dir: 'in', text: res.answer ?? '', time: nowLabel() }]);
           if (res.escalate) {
             setTimeout(() => toast(`Ticket ${res.ticketRef} raised — escalated to a human agent on WhatsApp ✓`), 400);
           }

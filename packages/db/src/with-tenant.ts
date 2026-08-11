@@ -25,6 +25,6 @@ export async function withTenant<T>(
       await tx.$executeRawUnsafe(`SET LOCAL app.tenant = '${tenantId}'`);
       return fn(tx);
     },
-    { timeout: 60_000 },
+    { maxWait: 10_000, timeout: 60_000 },
   );
 }

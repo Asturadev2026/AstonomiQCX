@@ -96,9 +96,10 @@ export interface ConvHubPayload {
 }
 
 // POST /api/v1/ai/ask
+export type { SupportedLanguage } from '@aq/shared';
 export interface AskAstraPayload {
   question: string;
-  language?: string;
+  language?: import('@aq/shared').SupportedLanguage;
   channel?: 'chat' | 'whatsapp' | 'voice';
   contactId?: string;
 }

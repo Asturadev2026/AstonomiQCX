@@ -224,7 +224,9 @@ function weighted<T>(pairs: [T, number][]): T[] {
   // (e.g. the "recent audits" list) even though the overall distribution stays correct.
   for (let i = out.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [out[i], out[j]] = [out[j], out[i]];
+    const temp = out[i]!;
+    out[i] = out[j]!;
+    out[j] = temp;
   }
   return out;
 }
@@ -686,14 +688,15 @@ async function main() {
     let convIndex = 0;
     for (let day = 0; day < DAILY_TOTAL.length; day++) {
       const daysAgo = DAILY_TOTAL.length - 1 - day;
-      const total = DAILY_TOTAL[day];
-      const aiCount = DAILY_AI[day];
+      const total = DAILY_TOTAL[day]!;
+      const aiCount = DAILY_AI[day]!;
       const isLastDay = day === DAILY_TOTAL.length - 1;
       for (let j = 0; j < total; j++) {
         const isAi = j < aiCount;
         const contact = allContacts[convIndex % allContacts.length];
-        const assignedUserId = isAi ? null : rotationAgents[convIndex % rotationAgents.length].id;
-        const hour = CONV_HOURS[convIndex % CONV_HOURS.length];
+        const agentUser = rotationAgents[convIndex % rotationAgents.length];
+        const assignedUserId = isAi || !agentUser ? null : agentUser.id;
+        const hour = CONV_HOURS[convIndex % CONV_HOURS.length]!;
         const createdAt = new Date();
         createdAt.setDate(createdAt.getDate() - daysAgo);
         createdAt.setHours(hour, randInt(0, 59), 0, 0);

@@ -1,8 +1,14 @@
 /** Guide §10.3 — asking Astra a question and getting back an answer or an escalation. */
 
+/** English + Hindi only for now (Multilingual/Sarvam/Exotel plan) — 'auto' (the default) asks
+ *  the LLM to mirror whichever language the customer's message is written in; pass 'en'/'hi'
+ *  explicitly when the caller already knows it for certain (e.g. Sarvam's STT language code
+ *  for a voice turn). */
+export type SupportedLanguage = 'en' | 'hi' | 'auto';
+
 export interface AskAstraDto {
   question: string;
-  language?: string;
+  language?: SupportedLanguage;
   /** Lets the reply style adapt — voice replies are short/spoken, no markdown. Defaults to 'chat'. */
   channel?: 'chat' | 'whatsapp' | 'voice';
   /** "Test as this customer" — lets a published flow's order lookup use their real data. */

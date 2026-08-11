@@ -4,6 +4,8 @@
  * answers that sound broken when spoken ("asterisk asterisk..."). This
  * gives the LLM a channel-specific style instruction and, as a safety net,
  * strips any markdown that slips through anyway before it's spoken.
+ *
+ * Language selection lives in ./language.ts, and the canned non-LLM replies in ./replies.ts.
  */
 export const VOICE_STYLE_INSTRUCTION =
   'This is a live phone call — the customer hears your reply read aloud, they do not read it. ' +

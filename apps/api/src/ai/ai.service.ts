@@ -1,11 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { getPrisma, withTenant } from '@aq/db';
-import type { AstraAnswerDto } from '@aq/shared';
+import type { AstraAnswerDto, SupportedLanguage } from '@aq/shared';
 import { AgentFlowService } from '../agent-builder/agent-flow.service';
 import { FlowExecutionService } from '../agent-builder/flow-execution.service';
 import { KbService } from '../kb/kb.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { isConfigured, llmComplete, LlmAuthError } from './llm';
+import { languageInstruction, resolveLanguage } from './language';
+import { escalatedGeneric, nonDeliveryEscalated, notConfigured, trackAskForRef } from './replies';
 import { stripMarkdownForSpeech, VOICE_STYLE_INSTRUCTION } from './reply-style';
 
 const ORDER_QUERY_RE = /order|track|deliver|shipped|shipment|transit|package|parcel|where.*order|order.*where/i;
@@ -42,11 +44,14 @@ export class AiService {
   async ask(
     tenantId: string,
     question: string,
-    options: { language?: string; contactId?: string; conversationId?: string; channel?: 'chat' | 'whatsapp' | 'voice' } = {},
+    options: { language?: SupportedLanguage; contactId?: string; conversationId?: string; channel?: 'chat' | 'whatsapp' | 'voice' } = {},
   ): Promise<AstraAnswerDto> {
-    const language = options.language ?? 'en';
+    const language = options.language ?? 'auto';
+    // Only for the canned replies below — everything that reaches the LLM passes `language`
+    // itself, so the model does the (more accurate) detection there.
+    const lang = resolveLanguage(language, question);
     if (!isConfigured()) {
-      return { answer: null, escalate: false, configured: false, sources: [], ticketRef: null };
+      return { answer: notConfigured(lang), escalate: false, configured: false, sources: [], ticketRef: null };
     }
 
     const publishedFlow = await this.flows.findPublishedChatFlow(tenantId);
@@ -116,7 +121,7 @@ export class AiService {
             conversationId: options.conversationId,
           });
           return {
-            answer: `I'm sorry to hear that — order ${targetOrder.extRef ?? targetOrder.id} shows as delivered but you haven't received it. I've raised escalation ticket ${ticket.extRef} for our logistics team to investigate immediately.`,
+            answer: nonDeliveryEscalated(lang, targetOrder.extRef ?? targetOrder.id, ticket.extRef ?? ticket.id),
             escalate: false,
             configured: true,
             sources: [],
@@ -136,7 +141,7 @@ export class AiService {
       // and will respond with ESCALATE for any order-related question.
       if (orders.length === 0) {
         return {
-          answer: `I'd be happy to help track your order! Could you please share your order reference number (e.g. ZK-123)?`,
+          answer: trackAskForRef(lang),
           escalate: false,
           configured: true,
           sources: [],
@@ -154,7 +159,7 @@ export class AiService {
         const styleInstruction = options.channel === 'voice' ? `${VOICE_STYLE_INSTRUCTION} ` : '';
         const prompt =
           `You are Astra, the support assistant. ${styleInstruction}${historyBlock}${orderLine}Answer the customer ONLY using the knowledge base context ` +
-          `below and the order details above. Reply in ${language}. If the issue needs a human ` +
+          `below and the order details above. ${languageInstruction(language)} If the issue needs a human ` +
           `(like a complaint or account dispute), reply with exactly the word ESCALATE.\n\n` +
           `Context:\n${context || '(no matching knowledge base articles)'}\n\nCustomer question: ${question}`;
 
@@ -173,11 +178,17 @@ export class AiService {
             });
             ticketRef = ticket.extRef;
           }
-          return { answer: escalate ? null : answer, escalate, configured: true, sources: articles.map((a) => a.title), ticketRef };
+          return {
+            answer: escalate ? escalatedGeneric(lang, ticketRef) : answer,
+            escalate,
+            configured: true,
+            sources: articles.map((a) => a.title),
+            ticketRef,
+          };
         } catch (err) {
           if (err instanceof LlmAuthError) {
             this.logger.warn((err as Error).message);
-            return { answer: null, escalate: false, configured: false, sources: [], ticketRef: null };
+            return { answer: notConfigured(lang), escalate: false, configured: false, sources: [], ticketRef: null };
           }
           throw err;
         }
@@ -187,7 +198,7 @@ export class AiService {
     const styleInstruction = options.channel === 'voice' ? `${VOICE_STYLE_INSTRUCTION} ` : '';
     const prompt =
       `You are Astra, the support assistant. ${styleInstruction}${historyBlock}Answer the customer ONLY using the context below (and conversation history above if relevant). ` +
-      `Reply in ${language}. If the answer is not in the context, or the issue needs a human ` +
+      `${languageInstruction(language)} If the answer is not in the context, or the issue needs a human ` +
       `(like a refund or complaint), reply with exactly the word ESCALATE.\n\n` +
       `Context:\n${context || '(no matching knowledge base articles)'}\n\nCustomer question: ${question}`;
 
@@ -216,7 +227,7 @@ export class AiService {
       }
 
       return {
-        answer: escalate ? null : answer,
+        answer: escalate ? escalatedGeneric(lang, ticketRef) : answer,
         escalate,
         configured: true,
         sources: articles.map((a) => a.title),
@@ -225,7 +236,7 @@ export class AiService {
     } catch (err) {
       if (err instanceof LlmAuthError) {
         this.logger.warn(err.message);
-        return { answer: null, escalate: false, configured: false, sources: [], ticketRef: null };
+        return { answer: notConfigured(lang), escalate: false, configured: false, sources: [], ticketRef: null };
       }
       throw err;
     }

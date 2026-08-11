@@ -120,12 +120,9 @@ export class WhatsappService {
     await this.conversations.appendMessage(tenantId, conversation.id, { senderType: 'customer', body: text });
 
     // Guide §10.4: same Astra brain answers on every channel.
-    const answer = await this.ai.ask(tenantId, text, { contactId: contact.id, conversationId: conversation.id, channel: 'whatsapp' });
-    const replyText = !answer.configured
-      ? "We're having a temporary issue — our team will follow up with you shortly."
-      : answer.escalate
-        ? `Thanks — I've raised this with our team (ref ${answer.ticketRef}). They'll follow up shortly.`
-        : answer.answer ?? '';
+    // language: 'auto' — LLM mirrors whichever language the customer wrote in (English or Hindi).
+    const answer = await this.ai.ask(tenantId, text, { language: 'auto', contactId: contact.id, conversationId: conversation.id, channel: 'whatsapp' });
+    const replyText = answer.answer ?? '';
 
     await this.conversations.appendMessage(tenantId, conversation.id, {
       senderType: 'bot',

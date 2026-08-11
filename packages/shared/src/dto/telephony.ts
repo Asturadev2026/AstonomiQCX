@@ -21,6 +21,9 @@ export interface TelephonyIntegrationStatus {
 
 export interface SendTestCallDto {
   toNumber: string;
+  /** Optional: a registered Exotel virtual number to use as CallerId.
+   *  If omitted, toNumber is used as a fallback (works only if Exotel has it pre-registered). */
+  callerId?: string;
 }
 
 export interface TestCallResultDto {

@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Post, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Logger, Post, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import type { TranscribeResponseDto, VoiceStatusDto } from '@aq/shared';
@@ -10,9 +10,11 @@ import { VoiceNotConfiguredError, VoiceService } from './voice.service';
  */
 @Controller('voice')
 export class VoiceController {
+  private readonly logger = new Logger(VoiceController.name);
+
   constructor(private svc: VoiceService) {}
 
-  /** Lets the frontend pick real Sarvam/ElevenLabs vs. the browser-speech fallback once per call. */
+  /** Lets the frontend pick real Sarvam STT/TTS vs. the browser-speech fallback once per call. */
   @Get('status')
   status(): VoiceStatusDto {
     return { sttConfigured: this.svc.isSttConfigured(), ttsConfigured: this.svc.isTtsConfigured() };
@@ -32,7 +34,11 @@ export class VoiceController {
     }
   }
 
-  /** Returns raw audio/mpeg bytes — bypasses the {data:...} envelope via @Res(). */
+  /**
+   * Returns raw audio/mpeg bytes on success — bypasses the {data:...} envelope via @Res().
+   * On failure, returns a JSON body with a real reason (Sarvam auth/quota/request error, etc.)
+   * instead of a bare 500, so the caller can show something more useful than "not connected".
+   */
   @Post('synthesize')
   async synthesize(@Body('text') text: string, @Res() res: Response): Promise<void> {
     if (!text?.trim()) throw new BadRequestException('text is required');
@@ -42,10 +48,12 @@ export class VoiceController {
       res.send(audio);
     } catch (err) {
       if (err instanceof VoiceNotConfiguredError) {
-        res.status(503).json({ data: { configured: false } });
+        res.status(503).json({ data: { configured: false }, error: err.message });
         return;
       }
-      throw err;
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Sarvam TTS failed: ${message}`);
+      res.status(502).json({ data: { configured: true }, error: message });
     }
   }
 }

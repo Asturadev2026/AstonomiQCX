@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { env } from '../config/env';
 
-// ElevenLabs' long-standing premade "Rachel" voice — stable fallback if unset.
-const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM';
+// Same script check ai/language.ts uses to detect a Devanagari reply — the chatbot already
+// guarantees Hindi answers are written in Devanagari (see language.ts's languageInstruction()),
+// so this is enough to pick the right Sarvam voice without re-detecting language from scratch.
+const DEVANAGARI_RE = /[ऀ-ॿ]/;
 
 /** Thrown when the requested piece (STT or TTS) has no API key configured. */
 export class VoiceNotConfiguredError extends Error {}
@@ -14,9 +16,14 @@ export interface TranscribeResult {
 }
 
 /**
- * Real STT (Sarvam) and TTS (ElevenLabs) as standalone, independently
- * testable pieces — Guide §10.5/§10.6, scoped down from a live phone call:
- * no Exotel telephony/streaming yet, that's a separate, much bigger piece.
+ * Real STT and TTS (both Sarvam) as standalone, independently testable
+ * pieces — Guide §10.5/§10.6, scoped down from a live phone call: no Exotel
+ * telephony/streaming yet, that's a separate, much bigger piece.
+ *
+ * TTS previously used ElevenLabs, but its free-plan API access is blocked for library voices
+ * (402 paid_plan_required) and it had no reliable way to speak Devanagari. Sarvam's Bulbul
+ * model natively supports the same Indic languages Saaras transcribes, under the one
+ * SARVAM_API_KEY already in use for STT — no second provider/key to manage.
  */
 @Injectable()
 export class VoiceService {
@@ -27,7 +34,7 @@ export class VoiceService {
   }
 
   isTtsConfigured(): boolean {
-    return Boolean(env.ELEVENLABS_API_KEY);
+    return Boolean(env.SARVAM_API_KEY);
   }
 
   /** Sarvam's saaras:v3 model — verified current as of July 2026. */
@@ -53,21 +60,35 @@ export class VoiceService {
     return { transcript: data.transcript, languageCode: data.language_code ?? null, configured: true };
   }
 
-  /** ElevenLabs' text-to-speech endpoint. Returns raw MP3 bytes. */
+  /**
+   * Sarvam's Bulbul v3 text-to-speech model. Picks hi-IN/en-IN purely from the reply's own
+   * script — the chatbot's answer is used verbatim (see ai/replies.ts and ai.service.ts),
+   * never re-translated or regenerated here. Returns raw MP3 bytes (browser-playable directly).
+   */
   async synthesizeSpeech(text: string): Promise<Buffer> {
     if (!this.isTtsConfigured()) {
-      throw new VoiceNotConfiguredError('ELEVENLABS_API_KEY is not configured');
+      throw new VoiceNotConfiguredError('SARVAM_API_KEY is not configured');
     }
 
-    const voiceId = env.ELEVENLABS_VOICE_ID || DEFAULT_VOICE_ID;
-    const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+    const languageCode = DEVANAGARI_RE.test(text) ? 'hi-IN' : 'en-IN';
+    const res = await fetch('https://api.sarvam.ai/text-to-speech', {
       method: 'POST',
-      headers: { 'xi-api-key': env.ELEVENLABS_API_KEY!, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2' }),
+      headers: { 'api-subscription-key': env.SARVAM_API_KEY!, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text,
+        language_code: languageCode,
+        model: 'bulbul:v3',
+        output_audio_codec: 'mp3',
+      }),
     });
     if (!res.ok) {
-      throw new Error(`ElevenLabs TTS failed: ${res.status} ${await res.text()}`);
+      throw new Error(`Sarvam TTS failed: ${res.status} ${await res.text()}`);
     }
-    return Buffer.from(await res.arrayBuffer());
+    const data = (await res.json()) as { audios?: string[] };
+    const audioBase64 = data.audios?.[0];
+    if (!audioBase64) {
+      throw new Error('Sarvam TTS returned no audio data');
+    }
+    return Buffer.from(audioBase64, 'base64');
   }
 }
