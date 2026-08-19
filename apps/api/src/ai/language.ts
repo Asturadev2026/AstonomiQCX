@@ -50,8 +50,16 @@ export function detectLanguage(text: string): Lang {
   return words.some((w) => HINDI_MARKERS.has(w)) ? 'hi' : 'en';
 }
 
-/** An explicit 'en'/'hi' from the caller always wins; 'auto' falls back to detection. */
+/**
+ * An explicit 'en'/'hi' from the caller normally wins; 'auto' falls back to detection.
+ * Devanagari in the text overrides even an explicit language, though — no real Hindi-or-English
+ * message contains it by accident, so it's a stronger signal than whatever tagged the call.
+ * This matters for voice: Sarvam's STT tags a whole utterance's language by dominant phonetic
+ * content, which can mislabel a short, code-mixed turn as English (e.g. "नहीं, थैंक यू।" tagged
+ * en-IN) even though the transcript it actually produced is genuinely Devanagari-script Hindi.
+ */
 export function resolveLanguage(language: SupportedLanguage, text: string): Lang {
+  if (DEVANAGARI_RE.test(text)) return 'hi';
   return language === 'auto' ? detectLanguage(text) : language;
 }
 

@@ -68,19 +68,13 @@ export const greeting = (lang: Lang): string =>
     'नमस्ते! 👋 मैं Astra हूँ, आपका सपोर्ट असिस्टेंट। मैं ऑर्डर ट्रैक करने, रिफंड एलिजिबिलिटी चेक करने, रिटर्न अरेंज करने, या आपको किसी एजेंट से कनेक्ट करने में मदद कर सकता हूँ। बताइए, मैं आपकी क्या मदद करूँ?',
   );
 
+// thanksReply/farewell are genuine closings (see FlowExecutionService's `closing: true`) — the
+// customer is done, not pausing, so these deliberately do NOT ask "anything else?" afterward.
 export const thanksReply = (lang: Lang): string =>
-  pick(
-    lang,
-    "You're welcome! 😊 Is there anything else I can help you with?",
-    'खुशी हुई मदद करके! 😊 क्या मैं आपकी किसी और चीज़ में मदद कर सकता हूँ?',
-  );
+  pick(lang, "You're welcome! Have a great day!", 'आपका स्वागत है! आपका दिन शुभ हो!');
 
 export const farewell = (lang: Lang): string =>
-  pick(
-    lang,
-    'Goodbye! 👋 Feel free to reach out anytime you need help. Have a great day!',
-    'अलविदा! 👋 जब भी मदद चाहिए हो, बेझिझक संपर्क करें। आपका दिन शुभ हो!',
-  );
+  pick(lang, 'Goodbye! Have a great day!', 'अलविदा! आपका दिन शुभ हो!');
 
 export const acknowledgeMenu = (lang: Lang): string =>
   pick(

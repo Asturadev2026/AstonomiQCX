@@ -97,6 +97,7 @@ export function VoiceAi() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const vadRafRef = useRef<number | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
+  const streamCtrlRef = useRef<{ cancelled: boolean; audioCtx: AudioContext; sources: AudioBufferSourceNode[] } | null>(null);
 
   const startTimer = () => {
     setSeconds(0);
@@ -124,7 +125,7 @@ export function VoiceAi() {
   // Watches mic volume via Web Audio's AnalyserNode and auto-sends once the caller has spoken
   // and then gone quiet for SILENCE_HOLD_MS, with a hard MAX_RECORD_MS ceiling as a backstop.
   const SILENCE_THRESHOLD = 0.02;
-  const SILENCE_HOLD_MS = 1200;
+  const SILENCE_HOLD_MS = 700;
   const MAX_RECORD_MS = 15_000;
 
   const stopVoiceActivityDetection = () => {
@@ -348,18 +349,21 @@ export function VoiceAi() {
     setLines((l) => [...l, { who: 'cus', text: transcript }]);
     setTurns((t) => t + 1);
 
-    // Answering takes a couple of LLM round-trips (intent detection, then the
-    // real reply) — speak a quick filler right away so the call doesn't just
-    // go silent while that runs. Promise.all keeps them from talking over
-    // each other: the real answer only gets spoken once the filler is done.
-    const [, answer] = await Promise.all([
-      speakReply('Let me check that for you.'),
-      ask.mutateAsync({ question: transcript, channel: 'voice', contactId: contact?.id, language }),
-    ]);
+    const answer = await ask.mutateAsync({ question: transcript, channel: 'voice', contactId: contact?.id, language });
     let replyText: string;
+    let shouldEndCall = false;
     if (!answer.configured) {
       replyText = answer.answer ?? "We're having a temporary issue — please try again shortly.";
       awaitingFollowUpRef.current = false;
+    } else if (answer.closing) {
+      // Agent Builder's own thanks/farewell intents (see flow-execution.service.ts) already
+      // classified this as a genuine closing — not just a pause — and returned a complete,
+      // Devanagari-safe closing reply from replies.ts. Speak it as-is: no bolted-on "anything
+      // else?" (which would be a non-sequitur after a goodbye), and end the call rather than
+      // re-arming the mic, mirroring what awaitingFollowUpRef already does for the "no" case below.
+      replyText = answer.answer ?? '';
+      awaitingFollowUpRef.current = false;
+      shouldEndCall = true;
     } else if (answer.escalate) {
       replyText = `${answer.answer ?? ''} Is there anything else I can help you with?`;
       awaitingFollowUpRef.current = true;
@@ -377,7 +381,11 @@ export function VoiceAi() {
 
     setTurnState('speaking');
     await speakReply(replyText);
-    if (callActiveRef.current) await startListening();
+    if (shouldEndCall) {
+      endCall();
+    } else if (callActiveRef.current) {
+      await startListening();
+    }
   };
 
   // Both HTMLMediaElement's `onended` and SpeechSynthesisUtterance's `onend` are known to
@@ -397,11 +405,109 @@ export function VoiceAi() {
     });
   }
 
-  // --- Real Sarvam Bulbul TTS path ---
+  // --- Real Sarvam Bulbul TTS path — streaming (primary) ---
+  // Plays raw PCM chunks as they arrive over HTTP chunked transfer instead of waiting for the
+  // whole reply to finish generating (confirmed ~650ms-1.2s to first sound vs. several seconds
+  // end-to-end for the buffered /synthesize call below). Scheduled back-to-back via the Web
+  // Audio API so chunks play gaplessly as one continuous utterance.
+  const playBackendSpeechStream = async (text: string): Promise<string | null> => {
+    let res: Response;
+    try {
+      res = await fetch('/api/v1/voice/synthesize/stream', {
+        method: 'POST',
+        headers: { ...tenantHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+    } catch (err) {
+      return `Couldn't reach the voice API: ${err instanceof Error ? err.message : String(err)}`;
+    }
+    if (!res.ok || !res.body) {
+      const body = await res.json().catch(() => null);
+      return body?.error ?? `Sarvam TTS stream failed (HTTP ${res.status})`;
+    }
+    const sampleRate = Number(res.headers.get('X-Sample-Rate')) || 22050;
+
+    const AudioCtxCtor = window.AudioContext ?? (window as any).webkitAudioContext;
+    const audioCtx: AudioContext = new AudioCtxCtor({ sampleRate });
+    const session = { cancelled: false, audioCtx, sources: [] as AudioBufferSourceNode[] };
+    streamCtrlRef.current = session;
+
+    let nextStartTime = audioCtx.currentTime;
+    let scheduledAny = false;
+    let leftoverByte: Uint8Array | null = null; // PCM16 needs byte pairs; a chunk can split one
+    let lastEnded: Promise<void> = Promise.resolve();
+    let playbackError: string | null = null;
+
+    try {
+      const reader = res.body.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (session.cancelled) break;
+        if (done) break;
+        if (!value?.length) continue;
+
+        let bytes = value;
+        if (leftoverByte) {
+          const merged = new Uint8Array(leftoverByte.length + bytes.length);
+          merged.set(leftoverByte);
+          merged.set(bytes, leftoverByte.length);
+          bytes = merged;
+          leftoverByte = null;
+        }
+        if (bytes.length % 2 !== 0) {
+          leftoverByte = bytes.slice(bytes.length - 1);
+          bytes = bytes.slice(0, bytes.length - 1);
+        }
+        if (!bytes.length) continue;
+
+        const sampleCount = bytes.length / 2;
+        // Copy into a fresh, aligned buffer — `bytes` may be a view with a non-2-byte-aligned
+        // offset into the original chunk, which Int16Array's constructor requires.
+        const aligned = new Uint8Array(bytes);
+        const samples = new Int16Array(aligned.buffer);
+        const audioBuffer = audioCtx.createBuffer(1, sampleCount, sampleRate);
+        const channel = audioBuffer.getChannelData(0);
+        for (let i = 0; i < sampleCount; i++) channel[i] = samples[i]! / 32768;
+
+        const source = audioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioCtx.destination);
+        const startAt = Math.max(nextStartTime, audioCtx.currentTime);
+        source.start(startAt);
+        nextStartTime = startAt + audioBuffer.duration;
+        session.sources.push(source);
+        scheduledAny = true;
+        lastEnded = new Promise((resolve) => {
+          source.onended = () => resolve();
+        });
+      }
+    } catch (err) {
+      playbackError = `Streaming playback failed: ${err instanceof Error ? err.message : String(err)}`;
+    }
+
+    if (!scheduledAny && !playbackError) {
+      playbackError = 'Sarvam TTS stream returned no audio';
+    }
+
+    // Wait for the actual last-scheduled chunk to finish playing, not just for the network
+    // stream to end (those two moments are different — playback trails the download). A
+    // bounded backstop still exists in case `onended` itself misfires, same as the non-streaming
+    // path, but the real completion signal here is the scheduled audio, not a text-length guess.
+    if (!session.cancelled && scheduledAny) {
+      const remainingMs = Math.max(0, (nextStartTime - audioCtx.currentTime) * 1000);
+      await withTimeout(lastEnded, remainingMs + 4_000);
+    }
+
+    await audioCtx.close().catch(() => {});
+    if (streamCtrlRef.current === session) streamCtrlRef.current = null;
+    return session.cancelled ? null : playbackError;
+  };
+
+  // --- Real Sarvam Bulbul TTS path — buffered (fallback if streaming itself fails) ---
   // Returns null on success, or an error string describing what actually went wrong (Sarvam
   // auth/quota/request failure, vs. a network error, vs. local playback failing) so the caller
   // can show something more useful than a generic "TTS unavailable".
-  const playBackendSpeech = async (text: string): Promise<string | null> => {
+  const playBackendSpeechBuffered = async (text: string): Promise<string | null> => {
     let res: Response;
     try {
       res = await fetch('/api/v1/voice/synthesize', {
@@ -468,7 +574,12 @@ export function VoiceAi() {
 
   const speakReply = async (text: string) => {
     if (statusRef.current.ttsConfigured) {
-      const error = await playBackendSpeech(text);
+      let error = await playBackendSpeechStream(text);
+      if (error) {
+        // Streaming itself failed (not just "sounded bad") — fall back to the simpler
+        // buffered call once before giving up on Sarvam entirely for this turn.
+        error = await playBackendSpeechBuffered(text);
+      }
       if (error) {
         // SARVAM_API_KEY IS set here (that's what ttsConfigured means) — a failure at this
         // point is a runtime problem (auth/quota/request/playback), not a missing key, so
@@ -537,6 +648,19 @@ export function VoiceAi() {
     if (audioElRef.current) {
       audioElRef.current.pause();
       audioElRef.current = null;
+    }
+    if (streamCtrlRef.current) {
+      const session = streamCtrlRef.current;
+      session.cancelled = true;
+      session.sources.forEach((s) => {
+        try {
+          s.stop();
+        } catch {
+          // Already finished/stopped — fine.
+        }
+      });
+      void session.audioCtx.close().catch(() => {});
+      streamCtrlRef.current = null;
     }
     callActiveRef.current = false;
     setCallActive(false);

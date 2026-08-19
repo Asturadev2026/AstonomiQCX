@@ -90,6 +90,16 @@ export class FlowExecutionService {
 
     const definition = flow.definition as unknown as AgentFlowDefinition;
     const ctx: ExecContext = {};
+    const t0 = Date.now(); // [PROFILE] temporary — remove before shipping
+
+    // Kicked off speculatively from inside detect_intent (see below) only when intent isn't
+    // resolved by an instant regex/keyword match and has to go through the LLM classifier —
+    // that's the one case where fetch_data's later DB round-trip (~1s, India↔us-east-1) can
+    // run concurrently with the classifier call (~1s) instead of stacking after it. A `.catch`
+    // is attached solely to stop Node from logging an "unhandled rejection" if the classified
+    // intent turns out not to need order data at all and this ends up never awaited — fetch_data
+    // still awaits the ORIGINAL promise below, so a real failure still propagates normally there.
+    let speculativeOrdersPromise: Promise<Order[]> | null = null;
 
     // Walk via each node's `nextId` override when set, falling through to the
     // next array element otherwise (the array order the Agent Builder canvas
@@ -106,6 +116,7 @@ export class FlowExecutionService {
     try {
       while (node && steps++ < definition.nodes.length * 2) {
         visitedNodeIds.push(node.id);
+        this.logger.log(`[PROFILE] node=${node.type} start +${Date.now() - t0}ms`); // temporary
         switch (node.type) {
           case 'trigger':
             break; // entry point only
@@ -143,9 +154,13 @@ export class FlowExecutionService {
             // These are matched regardless of the flow's configured intents because
             // every support bot needs to handle "ok", "thanks", "bye", and menu numbers.
             const q = question.toLowerCase();
+            // Devanagari terms alongside the romanized ones — Sarvam's STT transcribes Hindi
+            // speech in Devanagari script (see voice.service.ts), not Hinglish, so a spoken
+            // "धन्यवाद" needs to match here too, not just a typed "dhanyavaad". `।` (danda) is
+            // Hindi's own full stop, accepted as trailing punctuation alongside "!."
             const CONVERSATIONAL: Record<string, RegExp> = {
-              thanks: /^\s*(thanks|thank\s*you|thx|ty|dhanyavaad|dhanyawad|shukriya|shukriya\s*ji|appreciated)\s*[!.]*\s*$/i,
-              farewell: /^\s*(bye|goodbye|good\s*bye|see\s*you|take\s*care|cya|alvida|phir\s*milte\s*hain?)\s*[!.]*\s*$/i,
+              thanks: /^\s*(thanks|thank\s*you|thx|ty|dhanyavaad|dhanyawad|shukriya|shukriya\s*ji|appreciated|धन्यवाद|शुक्रिया)\s*[!.।]*\s*$/i,
+              farewell: /^\s*(bye|goodbye|good\s*bye|see\s*you|take\s*care|cya|alvida|phir\s*milte\s*hain?|अलविदा|फिर\s*मिलते\s*हैं)\s*[!.।]*\s*$/i,
               acknowledge: /^\s*(ok|okay|k|alright|sure|got\s*it|understood|fine|right|hm+|cool|great|nice|perfect|no\s*problem|np|accha|acha|theek\s*hai|thik\s*hai|theek|haan|han|ji|ji\s*haan|yes|no|yeah|yep|nope|nah|hmm+)\s*[!.]*\s*$/i,
             };
 
@@ -184,12 +199,34 @@ export class FlowExecutionService {
             }
 
             // Fallback: ask the LLM only when keywords don't resolve the intent.
+            // 'thanks'/'farewell' are always offered as candidates alongside the flow's own
+            // configured intents — the regex fast-path above only catches an exact "thank you"/
+            // "bye" with nothing else in the message; something like "Nahi, thank you." or
+            // "Thanks, but where's my order?" needs real language understanding to tell a genuine
+            // closing from a closing-shaped sentence that still has a live request in it.
             // max_tokens:5 — we only need one word back ("track", "refund", etc.)
+            const classifierIntents = Array.from(new Set([...intents, 'thanks', 'farewell']));
             const prompt =
-              `Classify the customer's message into exactly one of these intents: ${intents.join(', ')}. ` +
+              `Classify the customer's message into exactly one of these intents: ${classifierIntents.join(', ')}. ` +
+              `Classify as "thanks" or "farewell" ONLY if the customer is purely thanking you or ending the ` +
+              `conversation with no further request — if they mention a new question or ask for anything else ` +
+              `(even alongside "thanks"/"bye"), classify that request's own intent instead. ` +
               `Reply with ONLY the intent word, nothing else.\n\nMessage: ${question}`;
+            // Most ambiguous messages in a support bot end up being about an order (that's
+            // usually WHY they didn't match a keyword — "what about my thing" style phrasing) —
+            // so start the order fetch now, in parallel with the classifier call, rather than
+            // waiting to know the intent first. If the eventual intent doesn't need it (e.g. the
+            // classifier lands on "thanks"), fetch_data below just leaves this promise unawaited.
+            if (options.contactId) {
+              speculativeOrdersPromise = withTenant(this.prisma, tenantId, (tx) =>
+                tx.order.findMany({ where: { contactId: options.contactId }, orderBy: { createdAt: 'desc' }, take: 5 }),
+              );
+              speculativeOrdersPromise.catch(() => {});
+            }
+            const _tClassify = Date.now(); // [PROFILE] temporary
             const reply = (await llmComplete(prompt, 5)).trim().toLowerCase();
-            ctx.intent = intents.find((i) => reply.includes(i.toLowerCase())) ?? 'other';
+            this.logger.log(`[PROFILE] classifier LLM took ${Date.now() - _tClassify}ms`); // temporary
+            ctx.intent = classifierIntents.find((i) => reply.includes(i.toLowerCase())) ?? 'other';
             break;
           }
 
@@ -197,11 +234,19 @@ export class FlowExecutionService {
             // Fetch a few recent orders, not just the latest — a customer with more
             // than one open order needs the LLM to be able to match a mentioned
             // order ref instead of only ever knowing about the newest one.
-            if (node.config.source === 'latest_order' && options.contactId) {
-              ctx.orders = await withTenant(this.prisma, tenantId, (tx) =>
-                tx.order.findMany({ where: { contactId: options.contactId }, orderBy: { createdAt: 'desc' }, take: 5 }),
-              );
+            // None of these intents' send_reply branches ever read ctx.orders (see the thanks/
+            // farewell/greet/human/acknowledge cases below) — skip the DB round-trip entirely
+            // rather than fetching data nothing downstream will look at.
+            const NEVER_NEEDS_ORDERS = new Set(['thanks', 'farewell', 'greet', 'human', 'acknowledge']);
+            const _tFetch = Date.now(); // [PROFILE] temporary
+            if (node.config.source === 'latest_order' && options.contactId && !NEVER_NEEDS_ORDERS.has(ctx.intent ?? '')) {
+              ctx.orders = speculativeOrdersPromise
+                ? await speculativeOrdersPromise
+                : await withTenant(this.prisma, tenantId, (tx) =>
+                    tx.order.findMany({ where: { contactId: options.contactId }, orderBy: { createdAt: 'desc' }, take: 5 }),
+                  );
             }
+            this.logger.log(`[PROFILE] fetch_data DB took ${Date.now() - _tFetch}ms, intent=${ctx.intent}`); // temporary
             break;
           }
 
@@ -251,7 +296,7 @@ export class FlowExecutionService {
             // customer's actual orders — not left to the LLM to guess at —
             // since a wrong "yes you can refund that" is a real-money mistake.
             if (ctx.intent === 'refund') {
-              return this.buildRefundEligibilityReply(definition, ctx.orders ?? [], visitedNodeIds, lang);
+              return this.buildRefundEligibilityReply(definition, ctx.orders ?? [], visitedNodeIds, lang, options);
             }
 
             // A return needs an actual delivered order and a human to arrange
@@ -274,7 +319,7 @@ export class FlowExecutionService {
               };
             }
 
-            // ── Thanks — warm acknowledgment ──
+            // ── Thanks — warm acknowledgment, and a genuine closing (customer is done) ──
             if (ctx.intent === 'thanks') {
               return {
                 answer: R.thanksReply(lang),
@@ -282,11 +327,12 @@ export class FlowExecutionService {
                 configured: true,
                 sources: [],
                 ticketRef: null,
+                closing: true,
                 visitedNodeIds,
               };
             }
 
-            // ── Farewell — friendly goodbye ──
+            // ── Farewell — friendly goodbye, and a genuine closing ──
             if (ctx.intent === 'farewell') {
               return {
                 answer: R.farewell(lang),
@@ -294,14 +340,16 @@ export class FlowExecutionService {
                 configured: true,
                 sources: [],
                 ticketRef: null,
+                closing: true,
                 visitedNodeIds,
               };
             }
 
             // ── Acknowledgment / short reply — guide them to what we can do ──
             if (ctx.intent === 'acknowledge') {
+              const menuAns = R.acknowledgeMenu(lang);
               return {
-                answer: R.acknowledgeMenu(lang),
+                answer: options.channel === 'voice' ? stripMarkdownForSpeech(menuAns) : menuAns,
                 escalate: false,
                 configured: true,
                 sources: [],
@@ -312,7 +360,7 @@ export class FlowExecutionService {
 
             // ── Tracking — template response from real DB data, no LLM needed ──
             if (ctx.intent === 'track') {
-              return this.buildTrackingReply(ctx.orders ?? [], question, visitedNodeIds, lang);
+              return this.buildTrackingReply(ctx.orders ?? [], question, visitedNodeIds, lang, options);
             }
 
             // Handle non-delivery complaint when a customer says "not received" for a delivered order
@@ -342,7 +390,9 @@ export class FlowExecutionService {
 
             // ── LLM fallback — only for genuinely ambiguous questions ──
             // KB search is the only DB call needed here.
+            const _tKb = Date.now(); // [PROFILE] temporary
             const articles = await this.kb.searchByKeyword(tenantId, question);
+            this.logger.log(`[PROFILE] KB search took ${Date.now() - _tKb}ms`); // temporary
 
             const kbContext = articles.map((a) => `# ${a.title}\n${a.body}`).join('\n---\n');
 
@@ -367,7 +417,9 @@ export class FlowExecutionService {
               `ESCALATE.\n\nContext:\n${kbContext || '(no matching knowledge base articles)'}\n\n` +
               `Customer question: ${question}`;
 
+            const _tGen = Date.now(); // [PROFILE] temporary
             const reply = await (llmFn ?? llmComplete)(prompt);
+            this.logger.log(`[PROFILE] answer-generation LLM took ${Date.now() - _tGen}ms, total run() so far ${Date.now() - t0}ms`); // temporary
             const escalate = reply.trim().toUpperCase() === 'ESCALATE';
             const answer = options.channel === 'voice' ? stripMarkdownForSpeech(reply) : reply;
 
@@ -430,6 +482,7 @@ export class FlowExecutionService {
     orders: Order[],
     visitedNodeIds: string[],
     lang: Lang,
+    options?: RunOptions,
   ): AstraAnswerDto {
     if (orders.length === 0) {
       return {
@@ -463,7 +516,15 @@ export class FlowExecutionService {
       lines.push('', R.refundFooter(lang));
     }
 
-    return { answer: lines.join('\n'), escalate: false, configured: true, sources: [], ticketRef: null, visitedNodeIds };
+    const fullAnswer = lines.join('\n');
+    return {
+      answer: options?.channel === 'voice' ? stripMarkdownForSpeech(fullAnswer) : fullAnswer,
+      escalate: false,
+      configured: true,
+      sources: [],
+      ticketRef: null,
+      visitedNodeIds,
+    };
   }
 
   /**
@@ -540,7 +601,10 @@ export class FlowExecutionService {
     question: string,
     visitedNodeIds: string[],
     lang: Lang,
+    options?: RunOptions,
   ): AstraAnswerDto {
+    const isVoice = options?.channel === 'voice';
+
     if (orders.length === 0) {
       return {
         answer: R.trackAskForRef(lang),
@@ -558,8 +622,9 @@ export class FlowExecutionService {
     const matchedOrder = orders.find((o) => o.extRef && normalizedQ.includes(normalizeRef(o.extRef)));
 
     if (matchedOrder) {
+      const rawAns = `${R.trackingStatusHeader(lang)}\n\n${R.formatOrderCard(lang, matchedOrder)}`;
       return {
-        answer: `${R.trackingStatusHeader(lang)}\n\n${R.formatOrderCard(lang, matchedOrder)}`,
+        answer: isVoice ? stripMarkdownForSpeech(rawAns) : rawAns,
         escalate: false,
         configured: true,
         sources: [],
@@ -585,8 +650,9 @@ export class FlowExecutionService {
 
     // Single order or single in-transit — show it
     const target = inTransit.length === 1 ? inTransit[0] : orders[0];
+    const rawAns = `${R.trackingLatestHeader(lang)}\n\n${R.formatOrderCard(lang, target!)}`;
     return {
-      answer: `${R.trackingLatestHeader(lang)}\n\n${R.formatOrderCard(lang, target!)}`,
+      answer: isVoice ? stripMarkdownForSpeech(rawAns) : rawAns,
       escalate: false,
       configured: true,
       sources: [],
