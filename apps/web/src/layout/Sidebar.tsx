@@ -21,7 +21,7 @@ export function Sidebar() {
         </div>
       </div>
 
-      {NAV_GROUPS.map((group) => (
+      {NAV_GROUPS.filter((group) => group !== 'Admin' || user?.role === 'Admin').map((group) => (
         <div key={group}>
           <div className="navlabel">{group}</div>
           {VIEWS.filter((v) => v.group === group).map((v) => (

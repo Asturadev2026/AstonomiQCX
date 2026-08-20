@@ -5,5 +5,5 @@ import { UI_ROLES } from '@aq/shared';
 /** class-validator mirror of @aq/shared's UpdateUserRoleDto. */
 export class UpdateUserRoleDto implements UpdateUserRoleDtoShape {
   @IsIn(UI_ROLES)
-  roleName!: 'Admin' | 'Manager' | 'Executive';
+  roleName!: 'Admin' | 'Manager' | 'Agent';
 }

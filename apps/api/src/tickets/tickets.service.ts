@@ -94,14 +94,15 @@ export class TicketsService {
     });
   }
 
-  // 'ticket.view.all' sees everything; 'ticket.view.assigned' sees only their own —
-  // this scoping is a business rule, so it lives here rather than in the guard.
-  private viewScope(user?: AuthenticatedUser): { assignedUserId?: string } {
-    // Reads are unguarded (no login flow wired into apps/web yet — pages/Login.tsx) so
-    // there's no authenticated user to scope by; default to "view all" rather than
-    // 403ing an otherwise-open view. Writes still require a real user (see controller).
+  // '*'/'ticket.view.all' (Admin) sees everything; 'ticket.view.department' (Manager) sees
+  // only their own department; 'ticket.view.assigned' (Agent) sees only their own — this
+  // scoping is a business rule, so it lives here rather than in the guard.
+  private viewScope(user?: AuthenticatedUser): { assignedUserId?: string; departmentId?: string | null } {
+    // getByRef (Self-Service Portal) and any caller with no authenticated user default to
+    // "view all" rather than 403ing an otherwise-public lookup.
     if (!user) return {};
     if (user.permissions.includes('*') || user.permissions.includes('ticket.view.all')) return {};
+    if (user.permissions.includes('ticket.view.department')) return { departmentId: user.departmentId };
     if (user.permissions.includes('ticket.view.assigned')) return { assignedUserId: user.id };
     throw new ForbiddenException('You do not have permission for this');
   }
@@ -136,5 +137,54 @@ export class TicketsService {
       if (!ticket) throw new NotFoundException(`Ticket ${extRef} not found`);
       return ticket;
     });
+  }
+
+  /** Reassigns a ticket to another agent — Manager/Admin's "ticket reassignment" (@Perms('ticket.assign')). */
+  async assign(tenantId: string, actingUserId: string, id: string, assignedUserId: string | null): Promise<Ticket> {
+    return withTenant(this.prisma, tenantId, async (tx) => {
+      const existing = await tx.ticket.findUnique({ where: { id } });
+      if (!existing) throw new NotFoundException(`Ticket ${id} not found`);
+      if (assignedUserId) {
+        const assignee = await tx.user.findUnique({ where: { id: assignedUserId } });
+        if (!assignee) throw new NotFoundException(`User ${assignedUserId} not found`);
+      }
+
+      const ticket = await tx.ticket.update({ where: { id }, data: { assignedUserId } });
+      await this.audit.log(tx, tenantId, actingUserId, 'ticket.assign', 'ticket', { id, assignedUserId });
+      this.rt.emitToTenant(tenantId, 'ticket.updated', ticket);
+      return ticket;
+    });
+  }
+
+  private async setRefundOutcome(
+    tenantId: string,
+    actingUserId: string,
+    id: string,
+    outcome: 'approve' | 'reject',
+  ): Promise<Ticket> {
+    return withTenant(this.prisma, tenantId, async (tx) => {
+      const existing = await tx.ticket.findUnique({ where: { id } });
+      if (!existing) throw new NotFoundException(`Ticket ${id} not found`);
+      if (existing.category !== 'returns') {
+        throw new ForbiddenException('Only return/refund tickets can be approved or rejected');
+      }
+
+      const ticket = await tx.ticket.update({
+        where: { id },
+        data: { status: outcome === 'approve' ? 'resolved' : 'closed' },
+      });
+      await this.audit.log(tx, tenantId, actingUserId, `refund.${outcome}`, 'ticket', { id });
+      this.rt.emitToTenant(tenantId, 'ticket.updated', ticket);
+      return ticket;
+    });
+  }
+
+  /** Manager/Admin's refund approval workflow (@Perms('refund.approve')). */
+  approveRefund(tenantId: string, actingUserId: string, id: string): Promise<Ticket> {
+    return this.setRefundOutcome(tenantId, actingUserId, id, 'approve');
+  }
+
+  rejectRefund(tenantId: string, actingUserId: string, id: string): Promise<Ticket> {
+    return this.setRefundOutcome(tenantId, actingUserId, id, 'reject');
   }
 }

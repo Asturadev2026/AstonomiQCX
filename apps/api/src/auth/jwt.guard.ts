@@ -9,6 +9,7 @@ export interface AuthenticatedUser {
   email: string;
   title: string | null;
   departmentId: string | null;
+  role: string | null;
   permissions: string[];
 }
 
@@ -27,7 +28,15 @@ export class JwtGuard implements CanActivate {
       // Dev-only stand-in — see loadDevUser's doc comment. Gated on NODE_ENV so this
       // path is structurally unreachable in production regardless of any other bug.
       if (env.NODE_ENV === 'production') throw new UnauthorizedException('No login token');
-      (req as AuthenticatedRequest).user = await loadDevUser(req.tenantId);
+      // x-user-email — set by apps/web after the dev login screen (state/auth.tsx) —
+      // says which demo user this browser session is signed in as, same trust model as
+      // tenant.middleware.ts's x-tenant header.
+      const devEmail = (req.headers['x-user-email'] as string) || undefined;
+      try {
+        (req as AuthenticatedRequest).user = await loadDevUser(req.tenantId, devEmail);
+      } catch {
+        throw new UnauthorizedException('Invalid dev login session');
+      }
       return true;
     }
 

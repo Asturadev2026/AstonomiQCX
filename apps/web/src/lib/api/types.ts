@@ -64,6 +64,9 @@ export interface TicketRow {
   subject: string;
   priority: 'p1' | 'p2' | 'p3' | 'p4';
   status: 'new' | 'in_progress' | 'waiting' | 'resolved' | 'closed';
+  category: string | null;
+  assignedUserId: string | null;
+  departmentId: string | null;
   contact: { name: string | null } | null;
   assignedUser: { name: string; avatarColor: string | null } | null;
   createdAt: string;
@@ -124,9 +127,14 @@ export interface AstraAnswer {
 
 // GET /api/v1/me
 export interface SessionUser {
+  id: string | null;
   name: string;
+  email: string;
   initials: string;
   title: string;
+  role: string | null;
+  permissions: string[];
+  departmentId: string | null;
   tenantName: string;
 }
 
