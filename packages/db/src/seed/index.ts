@@ -1388,6 +1388,47 @@ async function main() {
     }
     console.log(`Seeded ${NORTHWIND_KB_ARTICLES.length} Northwind KB articles.`);
   });
+
+  // Platform tenant — AstronomiQ's own internal workspace. Its Admin role is
+  // the platform super-admin: the only one with the Tenants admin page
+  // (gated on tenantSubdomain === 'astonomiq' in apps/web/src/App.tsx and
+  // Sidebar.tsx via ViewDef.platformOnly). No demo data beyond one admin
+  // user — this tenant isn't a customer workspace, just the admin console.
+  const platformTenant = await prisma.tenant.upsert({
+    where: { subdomain: 'astonomiq' },
+    update: {},
+    create: { name: 'AstronomiQ', subdomain: 'astonomiq' },
+  });
+  console.log(`Seeded tenant: ${platformTenant.name} (${platformTenant.id})`);
+
+  await withTenant(prisma, platformTenant.id, async (tx) => {
+    const platformRoleByName = new Map<string, string>();
+    for (const role of DEFAULT_ROLES) {
+      const row = await tx.role.upsert({
+        where: { tenantId_name: { tenantId: platformTenant.id, name: role.name } },
+        update: { permissions: role.permissions },
+        create: { tenantId: platformTenant.id, name: role.name, permissions: role.permissions },
+      });
+      platformRoleByName.set(role.name, row.id);
+    }
+
+    const adminRoleId = platformRoleByName.get('Admin');
+    const existingAdmin = await tx.user.findFirst({ where: { tenantId: platformTenant.id, roleId: adminRoleId } });
+    if (!existingAdmin) {
+      await tx.user.create({
+        data: {
+          tenantId: platformTenant.id,
+          name: 'AstronomiQ Admin',
+          email: 'admin@astonomiq.in',
+          avatarColor: '#2563EB',
+          title: 'Platform Super Admin',
+          roleId: adminRoleId,
+          status: 'active',
+        },
+      });
+      console.log('Seeded AstronomiQ platform admin user.');
+    }
+  });
 }
 
 main()

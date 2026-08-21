@@ -18,6 +18,8 @@ export interface ViewDef {
   group: NavGroup;
   /** key into NavCounts for the sidebar badge, if this item shows one */
   badge?: 'inbox' | 'mentions' | 'slaAtRisk';
+  /** Visible only in the AstronomiQ platform tenant (the 'astonomiq' workspace) — hidden for every customer tenant's admin. */
+  platformOnly?: boolean;
 }
 
 export const VIEWS: ViewDef[] = [
@@ -52,7 +54,7 @@ export const VIEWS: ViewDef[] = [
   { id: 'qa', title: 'Auto QA', sub: 'Every interaction scored — no sampling', group: 'Engage & Analyse' },
   { id: 'analytics', title: 'Analytics', sub: 'Trends, cost savings and SLA performance', group: 'Engage & Analyse' },
   // Admin
-  { id: 'tenants', title: 'Tenants', sub: 'Manage workspaces, plans and status', group: 'Admin' },
+  { id: 'tenants', title: 'Tenants', sub: 'Manage workspaces, plans and status', group: 'Admin', platformOnly: true },
   { id: 'audit', title: 'Audit Log', sub: 'Who did what, and when', group: 'Admin' },
   { id: 'billing', title: 'Billing & Plans', sub: 'Subscription, usage and invoices', group: 'Admin' },
   { id: 'settings', title: 'Team & Settings', sub: 'Manage your workspace', group: 'Admin' },

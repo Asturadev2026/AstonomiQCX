@@ -7,7 +7,8 @@ import { useAuth } from '../state/auth';
 export function Sidebar() {
   const { data: counts } = useNavCounts();
   const { data: user } = useSessionUser();
-  const { signOut } = useAuth();
+  const { signOut, tenantSubdomain } = useAuth();
+  const isPlatformTenant = tenantSubdomain === 'astonomiq';
 
   return (
     <aside className="side">
@@ -24,7 +25,7 @@ export function Sidebar() {
       {NAV_GROUPS.filter((group) => group !== 'Admin' || user?.role === 'Admin').map((group) => (
         <div key={group}>
           <div className="navlabel">{group}</div>
-          {VIEWS.filter((v) => v.group === group).map((v) => (
+          {VIEWS.filter((v) => v.group === group && (!v.platformOnly || isPlatformTenant)).map((v) => (
             <NavLink
               key={v.id}
               to={`/${v.id}`}
