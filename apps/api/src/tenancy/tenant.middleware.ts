@@ -9,7 +9,7 @@ export interface TenantScopedRequest extends Request {
 
 /**
  * Finds the company for a request (Guide §6.2) — from the subdomain in
- * production (e.g. shopnova.app.astronomiq.in), or from an `x-tenant` header
+ * production (e.g. shopnova.app.astonomiq.in), or from an `x-tenant` header
  * for local dev, where the Vite proxy strips the browser's real Host before
  * forwarding to the API (changeOrigin: true in apps/web/vite.config.ts).
  */

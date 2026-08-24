@@ -1,4 +1,4 @@
-# AstronomiQ CX — Master Build & Deploy Guide
+# AstonomiQ CX — Master Build & Deploy Guide
 ### The single source of truth to build, deploy, test and maintain the platform
 
 **Version 1.0 · Audience: engineering team · Region: India (AWS Mumbai `ap-south-1`)**
@@ -7,7 +7,7 @@
 
 ## 0. How to use this document
 
-This is the only document the engineering team needs to build AstronomiQ CX from zero to a live, multi-tenant, cloud-hosted SaaS. Read it top to bottom once, then use it as a reference.
+This is the only document the engineering team needs to build AstonomiQ CX from zero to a live, multi-tenant, cloud-hosted SaaS. Read it top to bottom once, then use it as a reference.
 
 **What is in here:** every architecture and product decision (already made — do not re-ask), the full database schema, working reference code for every subsystem (auth, multi-tenancy, tickets, SLA engine, WhatsApp, cloud telephony, AI chatbot, escalation worker), the deployment setup (Docker, Kubernetes, cloud, CI/CD), the test plan, and step-by-step runbooks to add, delete or change any module, field, API or screen.
 
@@ -128,7 +128,7 @@ Multi-tenant SaaS. One codebase, many client companies (tenants), each fully iso
 ## 4. Repository layout (monorepo)
 
 ```
-astronomiq-cx/
+astonomiq-cx/
 ├── apps/
 │   ├── api/                 # NestJS core API
 │   ├── workers/             # BullMQ job processors
@@ -162,18 +162,18 @@ Every service reads config from env. Never commit secrets — use `.env` locally
 # core
 NODE_ENV=production
 API_PORT=4000
-APP_URL=https://app.astronomiq.in
+APP_URL=https://app.astonomiq.in
 # database
-DATABASE_URL=postgresql://aq:PASS@db-host:5432/astronomiq?schema=public
+DATABASE_URL=postgresql://aq:PASS@db-host:5432/astonomiq?schema=public
 # redis
 REDIS_URL=redis://redis-host:6379
 # auth (keycloak/oidc)
-OIDC_ISSUER=https://auth.astronomiq.in/realms/astronomiq
+OIDC_ISSUER=https://auth.astonomiq.in/realms/astonomiq
 OIDC_CLIENT_ID=aq-api
 OIDC_CLIENT_SECRET=xxxxx
 JWT_SECRET=change-me-32bytes-min
 # storage
-S3_BUCKET=astronomiq-media-apsouth1
+S3_BUCKET=astonomiq-media-apsouth1
 AWS_REGION=ap-south-1
 # whatsapp (meta cloud api)
 WA_PHONE_NUMBER_ID=xxxx
@@ -520,7 +520,7 @@ export class TenantMiddleware implements NestMiddleware {
   constructor(private prisma: PrismaService) {}
   async use(req: Request, _res: Response, next: NextFunction) {
     const host = req.headers['x-forwarded-host'] as string || req.hostname;
-    const sub = host.split('.')[0];              // shopnova.app.astronomiq.in -> shopnova
+    const sub = host.split('.')[0];              // shopnova.app.astonomiq.in -> shopnova
     const tenant = await this.prisma.tenant.findUnique({ where: { subdomain: sub }});
     if (!tenant || tenant.status !== 'active') throw new NotFoundException('Workspace not found');
     (req as any).tenantId = tenant.id;
@@ -547,7 +547,7 @@ Call `withTenant(prisma, req.tenantId, tx => tx.ticket.findMany())` in services.
 
 ## 8. Authentication, login IDs & RBAC
 
-Do **not** build your own password store. Use **Keycloak** (self-hosted, one realm) or Auth0. AstronomiQ stores only the OIDC `subject` on `users`.
+Do **not** build your own password store. Use **Keycloak** (self-hosted, one realm) or Auth0. AstonomiQ stores only the OIDC `subject` on `users`.
 
 **The login-ID chain**
 1. Super-Admin (you) creates a tenant + one Client-Admin user (§23 runbook).
@@ -955,7 +955,7 @@ Rule of thumb: **one prototype `render*()` function → one React component; one
 services:
   db:
     image: pgvector/pgvector:pg16
-    environment: { POSTGRES_USER: aq, POSTGRES_PASSWORD: aq, POSTGRES_DB: astronomiq }
+    environment: { POSTGRES_USER: aq, POSTGRES_PASSWORD: aq, POSTGRES_DB: astonomiq }
     ports: ["5432:5432"]
     volumes: ["pgdata:/var/lib/postgresql/data"]
   redis:
@@ -1009,7 +1009,7 @@ Host in India for DPDP data residency. Two options — start with **A (ECS Farga
 - **S3** buckets: `media` (recordings/attachments), `exports`. Block public access; server-side encryption (SSE-KMS).
 - **ECR** for images.
 - **Secrets Manager** for all secrets (referenced by task defs).
-- **ACM** cert + **Route 53** (`*.app.astronomiq.in` wildcard for tenant subdomains).
+- **ACM** cert + **Route 53** (`*.app.astonomiq.in` wildcard for tenant subdomains).
 - **CloudFront + WAF** in front of the SPA and API.
 - **SES** (email), **KMS** (encryption keys).
 
@@ -1017,7 +1017,7 @@ Host in India for DPDP data residency. Two options — start with **A (ECS Farga
 - Services: `api`, `workers`, `gateways` (each a Fargate service, auto-scaled on CPU/RPS), behind an **ALB**. The **web** SPA is static → S3 + CloudFront.
 - Terraform sketch:
   ```hcl
-  resource "aws_ecs_cluster" "aq" { name = "astronomiq" }
+  resource "aws_ecs_cluster" "aq" { name = "astonomiq" }
   resource "aws_ecs_service" "api" {
     name = "api"; cluster = aws_ecs_cluster.aq.id
     task_definition = aws_ecs_task_definition.api.arn
@@ -1060,7 +1060,7 @@ Ingress via AWS Load Balancer Controller + ACM; secrets via External Secrets Ope
 
 **Migrations on deploy:** run `prisma migrate deploy` as a one-off ECS task / k8s Job before rolling out new app versions.
 
-**DNS & tenant subdomains:** wildcard `*.app.astronomiq.in` → CloudFront/ALB. New tenant = new DB row; no DNS change needed (wildcard covers it).
+**DNS & tenant subdomains:** wildcard `*.app.astonomiq.in` → CloudFront/ALB. New tenant = new DB row; no DNS change needed (wildcard covers it).
 
 ---
 
@@ -1093,7 +1093,7 @@ jobs:
           docker build -t $ECR/aq-api:$GITHUB_SHA -f infra/docker/api.Dockerfile .
           docker push $ECR/aq-api:$GITHUB_SHA
       - run: aws ecs run-task ... prisma migrate deploy   # migrations
-      - run: aws ecs update-service --cluster astronomiq --service api --force-new-deployment
+      - run: aws ecs update-service --cluster astonomiq --service api --force-new-deployment
       # web: build & sync to S3 + CloudFront invalidation
 ```
 
@@ -1445,7 +1445,7 @@ export class RtGateway implements OnGatewayConnection {
 
 ### D.6 Keycloak realm setup (one-time)
 
-1. Create realm `astronomiq`. 2. Create confidential client `aq-api` (standard flow + service accounts) → copy client secret to `OIDC_CLIENT_SECRET`. 3. Create public client `aq-web` (PKCE, redirect `https://*.app.astronomiq.in/*`). 4. Enable "Required action: Update Password" so invited users set their own. 5. Add realm roles matching AstronomiQ roles (Admin/Manager/…); map to token via a "roles" client scope. 6. For enterprise SSO, add an Identity Provider (SAML/Google/Microsoft) per tenant and enable OTP as a required action for Admins. Automate all of this with the Keycloak Admin REST API inside the onboarding script (§23) so no manual console work per tenant.
+1. Create realm `astonomiq`. 2. Create confidential client `aq-api` (standard flow + service accounts) → copy client secret to `OIDC_CLIENT_SECRET`. 3. Create public client `aq-web` (PKCE, redirect `https://*.app.astonomiq.in/*`). 4. Enable "Required action: Update Password" so invited users set their own. 5. Add realm roles matching AstonomiQ roles (Admin/Manager/…); map to token via a "roles" client scope. 6. For enterprise SSO, add an Identity Provider (SAML/Google/Microsoft) per tenant and enable OTP as a required action for Admins. Automate all of this with the Keycloak Admin REST API inside the onboarding script (§23) so no manual console work per tenant.
 
 ### D.7 Pagination, filtering & sorting convention
 
@@ -1484,7 +1484,7 @@ This document contains everything **we own**. Three categories necessarily live 
 2. **Cloud-console specifics** — exact IAM policy JSON, VPC/subnet CIDRs, and account-level settings depend on your AWS org; the Terraform in §18 is the shape, your infra team fills account IDs/CIDRs.
 3. **Commercial credentials & rates** — actual API keys, phone numbers, per-message/per-minute contracted rates, and the Meta/BSP + Exotel account sign-ups are procurement steps, not code.
 
-Everything else — architecture, schema, tenant isolation, auth model, every module's build pattern, SLA/escalation logic, channel gateway code, deployment, CI/CD, security, testing and change runbooks — is in this document. A competent team can build, deploy and operate AstronomiQ CX from this file plus the prototype UI, referring outward only for the three categories above.
+Everything else — architecture, schema, tenant isolation, auth model, every module's build pattern, SLA/escalation logic, channel gateway code, deployment, CI/CD, security, testing and change runbooks — is in this document. A competent team can build, deploy and operate AstonomiQ CX from this file plus the prototype UI, referring outward only for the three categories above.
 
 ---
 

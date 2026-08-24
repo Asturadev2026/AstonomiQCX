@@ -1,4 +1,4 @@
-# AstronomiQ CX
+# AstonomiQ CX
 
 Multi-tenant AI customer-experience platform — a pnpm + Turborepo monorepo
 (TypeScript everywhere).
@@ -56,7 +56,7 @@ Editor: VS Code + the Prisma, ESLint, and Prettier extensions.
 ### Run the web app (works today)
 
 ```bash
-git clone <repo> && cd astronomiq-cx
+git clone <repo> && cd astonomiq-cx
 cp .env.example .env          # defaults work as-is for local dev
 pnpm install                  # installs every workspace in one shot
 
@@ -97,7 +97,7 @@ pnpm --filter @aq/db migrate:dev --name init  # create + apply the first migrati
 |---|---|---|
 | 3000 | web (Vite) | proxies `/api/*` → `:4000` |
 | 4000 | api (NestJS) | 🚧 once built |
-| 5432 | PostgreSQL | user `aq` / pass `aq` / db `astronomiq` (dev only) |
+| 5432 | PostgreSQL | user `aq` / pass `aq` / db `astonomiq` (dev only) |
 | 6379 | Redis | |
 | 8080 | Keycloak | admin `admin` / `admin` (dev only) |
 
@@ -109,7 +109,7 @@ multi-tenant testing (e.g. `http://shopnova.localtest.me:3000`).
 ## Project structure
 
 ```
-astronomiq-cx/
+astonomiq-cx/
 ├── apps/
 │   └── web/                  ✅ React 18 + Vite SPA (@aq/web)
 │       ├── index.html

@@ -469,7 +469,7 @@ async function seedDemoLogins(tx: Tx, tenantId: string, subdomain: string) {
   for (const d of DEMO_LOGINS) {
     const role = await tx.role.findFirst({ where: { tenantId, name: d.role } });
     if (!role) continue;
-    const email = `${d.emailPrefix}@${subdomain}.astronomiq.dev`;
+    const email = `${d.emailPrefix}@${subdomain}.astonomiq.dev`;
     const departmentId = d.role === 'Admin' ? null : firstDept?.id ?? null;
     await tx.user.upsert({
       where: { tenantId_email: { tenantId, email } },
@@ -1389,7 +1389,7 @@ async function main() {
     console.log(`Seeded ${NORTHWIND_KB_ARTICLES.length} Northwind KB articles.`);
   });
 
-  // Platform tenant — AstronomiQ's own internal workspace. Its Admin role is
+  // Platform tenant — AstonomiQ's own internal workspace. Its Admin role is
   // the platform super-admin: the only one with the Tenants admin page
   // (gated on tenantSubdomain === 'astonomiq' in apps/web/src/App.tsx and
   // Sidebar.tsx via ViewDef.platformOnly). No demo data beyond one admin
@@ -1397,7 +1397,7 @@ async function main() {
   const platformTenant = await prisma.tenant.upsert({
     where: { subdomain: 'astonomiq' },
     update: {},
-    create: { name: 'AstronomiQ', subdomain: 'astonomiq' },
+    create: { name: 'AstonomiQ', subdomain: 'astonomiq' },
   });
   console.log(`Seeded tenant: ${platformTenant.name} (${platformTenant.id})`);
 
@@ -1418,7 +1418,7 @@ async function main() {
       await tx.user.create({
         data: {
           tenantId: platformTenant.id,
-          name: 'AstronomiQ Admin',
+          name: 'AstonomiQ Admin',
           email: 'admin@astonomiq.in',
           avatarColor: '#2563EB',
           title: 'Platform Super Admin',
@@ -1426,7 +1426,7 @@ async function main() {
           status: 'active',
         },
       });
-      console.log('Seeded AstronomiQ platform admin user.');
+      console.log('Seeded AstonomiQ platform admin user.');
     }
   });
 }

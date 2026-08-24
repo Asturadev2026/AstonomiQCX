@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../state/auth';
 import { useTenants } from '../lib/api/hooks';
+import logo from '../assets/logo.png';
 
 /**
  * Login — exact port of the prototype's login screen, plus a workspace
@@ -34,13 +35,7 @@ export function Login() {
     <div className="login">
       <div className="login-brand">
         <div className="lb-logo">
-          <div className="mark">
-            <i />
-          </div>
-          <div>
-            <b>AstronomiQ</b>
-            <span>CX Platform</span>
-          </div>
+          <img src={logo} alt="AstonomiQ" className="lb-logo-img" />
         </div>
         <div className="lb-hero">
           <h1>
@@ -76,7 +71,7 @@ export function Login() {
       </div>
       <div className="login-form">
         <h2>Welcome back 👋</h2>
-        <p className="lead">Sign in to your AstronomiQ CX workspace</p>
+        <p className="lead">Sign in to your AstonomiQ CX workspace</p>
         <div className="field">
           <label>Workspace</label>
           <select

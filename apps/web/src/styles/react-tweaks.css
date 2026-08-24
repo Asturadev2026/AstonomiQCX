@@ -1,5 +1,26 @@
 /* Minimal additions for the React port — prototype.css stays verbatim/untouched. */
 
+/* Real AstonomiQ logo image, swapped in for the prototype's CSS-drawn mark/icon. */
+.brand-logo-img {
+  width: 130px;
+  height: auto;
+}
+.lb-logo-img {
+  width: 230px;
+  height: auto;
+}
+
+/* prototype.css centers the donut/gauge label with display:grid, but with two
+   stacked children (b + small) and no align-content, the browser spreads them
+   across the full circle instead of hugging them together in the middle. */
+.donut .cx,
+.gauge .cx {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
 /* Sidebar items are <a> (NavLink) instead of the prototype's <button> */
 a.nav,
 a.nav:visited {

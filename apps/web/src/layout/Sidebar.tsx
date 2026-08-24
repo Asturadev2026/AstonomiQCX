@@ -3,6 +3,7 @@ import { NAV_GROUPS, VIEWS } from '../lib/views';
 import { NavIcon } from '../components/NavIcon';
 import { useNavCounts, useSessionUser } from '../lib/api/hooks';
 import { useAuth } from '../state/auth';
+import logo from '../assets/logo.png';
 
 export function Sidebar() {
   const { data: counts } = useNavCounts();
@@ -13,13 +14,7 @@ export function Sidebar() {
   return (
     <aside className="side">
       <div className="brand">
-        <div className="logo">
-          <i />
-        </div>
-        <div>
-          <b>AstronomiQ</b>
-          <span>{user?.tenantName ?? ''}</span>
-        </div>
+        <img src={logo} alt="AstonomiQ" className="brand-logo-img" />
       </div>
 
       {NAV_GROUPS.filter((group) => group !== 'Admin' || user?.role === 'Admin').map((group) => (
