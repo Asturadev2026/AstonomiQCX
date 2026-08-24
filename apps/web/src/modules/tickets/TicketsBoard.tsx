@@ -1,5 +1,14 @@
 import { useState } from 'react';
-import { useCreateTicket, useMoveTicket, useTickets } from '../../lib/api/hooks';
+import {
+  useApproveRefund,
+  useAssignTicket,
+  useCan,
+  useCreateTicket,
+  useDepartments,
+  useMoveTicket,
+  useRejectRefund,
+  useTickets,
+} from '../../lib/api/hooks';
 import { useToast } from '../../components/Toast';
 import { ErrorState, LoadingState } from '../../components/states';
 import { initials } from '../../lib/format';
@@ -8,8 +17,8 @@ import type { TicketRow } from '../../lib/api/types';
 /**
  * Tickets Board — exact port of the prototype's #tickets section (4-column
  * kanban). Backed by the pre-existing Tickets module (Guide §8.3's reference
- * pattern) — reads work unauthenticated like every other view; create/move
- * need a real login (JwtGuard) which isn't wired into apps/web yet.
+ * pattern) — reads, create and move all require a logged-in user; reassignment
+ * (ticket.assign) and refund approval (refund.approve) are gated to Manager/Admin.
  */
 
 const STAGES: { status: TicketRow['status']; label: string; color: string }[] = [
@@ -44,10 +53,17 @@ export function TicketsBoard() {
   const { data: tickets, isLoading, error, refetch } = useTickets();
   const moveTicket = useMoveTicket();
   const createTicket = useCreateTicket();
+  const assignTicket = useAssignTicket();
+  const approveRefund = useApproveRefund();
+  const rejectRefund = useRejectRefund();
+  const canAssign = useCan('ticket.assign');
+  const canApproveRefund = useCan('refund.approve');
+  const { data: departments } = useDepartments();
   const toast = useToast();
   const [creating, setCreating] = useState(false);
   const [subject, setSubject] = useState('');
   const [priority, setPriority] = useState<TicketRow['priority']>('p3');
+  const roster = (departments ?? []).flatMap((d) => d.execs.map((e) => ({ id: e.id, label: `${e.name} · ${d.name}` })));
 
   if (isLoading) return <LoadingState />;
   if (error || !tickets) return <ErrorState error={error} retry={() => void refetch()} />;
@@ -177,6 +193,60 @@ export function TicketsBoard() {
                         <span className="adv" style={{ color: 'var(--green)' }}>
                           ✓ Closed
                         </span>
+                      )}
+                      {canAssign && (
+                        <select
+                          value={t.assignedUserId ?? ''}
+                          onChange={(e) =>
+                            assignTicket.mutate(
+                              { id: t.id, assignedUserId: e.target.value || null },
+                              {
+                                onSuccess: () => toast('Ticket reassigned ✓'),
+                                onError: () => toast('Could not reassign ticket', 'error'),
+                              },
+                            )
+                          }
+                          style={{ width: '100%', marginTop: 8, fontSize: 12, padding: '5px 6px', borderRadius: 7, border: '1px solid var(--line2)', background: 'var(--panel)', color: 'var(--text)' }}
+                        >
+                          <option value="">Unassigned</option>
+                          {roster.map((r) => (
+                            <option key={r.id} value={r.id}>{r.label}</option>
+                          ))}
+                        </select>
+                      )}
+                      {canApproveRefund && t.category === 'returns' && t.status !== 'resolved' && t.status !== 'closed' && (
+                        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                          <button
+                            className="btn btn-g"
+                            style={{ flex: 1, fontSize: 12, padding: '5px 0' }}
+                            onClick={() =>
+                              approveRefund.mutate(
+                                { id: t.id },
+                                {
+                                  onSuccess: () => toast('Refund approved ✓'),
+                                  onError: () => toast('Could not approve refund', 'error'),
+                                },
+                              )
+                            }
+                          >
+                            Approve refund
+                          </button>
+                          <button
+                            className="btn btn-o"
+                            style={{ flex: 1, fontSize: 12, padding: '5px 0' }}
+                            onClick={() =>
+                              rejectRefund.mutate(
+                                { id: t.id },
+                                {
+                                  onSuccess: () => toast('Refund rejected'),
+                                  onError: () => toast('Could not reject refund', 'error'),
+                                },
+                              )
+                            }
+                          >
+                            Reject
+                          </button>
+                        </div>
                       )}
                     </div>
                   );

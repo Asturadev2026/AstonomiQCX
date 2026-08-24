@@ -5,21 +5,23 @@ import type { TenantScopedRequest } from '../tenancy/tenant.middleware';
 import { TicketsService } from './tickets.service';
 import { CreateTicketDto } from './create-ticket.dto';
 import { MoveTicketDto } from './move-ticket.dto';
+import { AssignTicketDto } from './assign-ticket.dto';
 
 /**
  * Thin web layer — Guide §8.4. No business logic here, only routing + permissions.
- * Reads are unguarded (same rationale as Contacts/Journey/Conversations — no login
- * flow wired into apps/web yet, see pages/Login.tsx); the service defaults to
- * "view all" with no authenticated user. Writes stay behind JwtGuard+PermissionsGuard
- * since ticket.create/move need a real user for audit logging and assignment.
+ * Reads require a logged-in user (JwtGuard) so TicketsService.viewScope() can apply the
+ * three-role scoping (Admin: all, Manager: their department, Agent: their own) — but no
+ * specific @Perms, since "can I view at all" is itself role-dependent and enforced in the
+ * service. by-ref stays fully public — it's the Self-Service Portal's ticket tracker.
  */
 @Controller('tickets')
 export class TicketsController {
   constructor(private svc: TicketsService) {}
 
+  @UseGuards(JwtGuard)
   @Get()
-  list(@Req() req: TenantScopedRequest) {
-    return this.svc.list(req.tenantId);
+  list(@Req() req: AuthenticatedRequest) {
+    return this.svc.list(req.tenantId, req.user);
   }
 
   @Get('by-ref/:extRef')
@@ -27,9 +29,10 @@ export class TicketsController {
     return this.svc.getByRef(req.tenantId, extRef);
   }
 
+  @UseGuards(JwtGuard)
   @Get(':id')
-  getOne(@Req() req: TenantScopedRequest, @Param('id') id: string) {
-    return this.svc.getOne(req.tenantId, id);
+  getOne(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return this.svc.getOne(req.tenantId, id, req.user);
   }
 
   @UseGuards(JwtGuard, PermissionsGuard)
@@ -44,5 +47,28 @@ export class TicketsController {
   @Patch(':id/move')
   move(@Req() req: AuthenticatedRequest, @Param('id') id: string, @Body() dto: MoveTicketDto) {
     return this.svc.move(req.tenantId, req.user.id, id, dto);
+  }
+
+  /** Manager/Admin's ticket reassignment (Team queue management). */
+  @UseGuards(JwtGuard, PermissionsGuard)
+  @Perms('ticket.assign')
+  @Patch(':id/assign')
+  assign(@Req() req: AuthenticatedRequest, @Param('id') id: string, @Body() dto: AssignTicketDto) {
+    return this.svc.assign(req.tenantId, req.user.id, id, dto.assignedUserId ?? null);
+  }
+
+  /** Manager/Admin's refund/return approval workflow. */
+  @UseGuards(JwtGuard, PermissionsGuard)
+  @Perms('refund.approve')
+  @Patch(':id/refund/approve')
+  approveRefund(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return this.svc.approveRefund(req.tenantId, req.user.id, id);
+  }
+
+  @UseGuards(JwtGuard, PermissionsGuard)
+  @Perms('refund.approve')
+  @Patch(':id/refund/reject')
+  rejectRefund(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return this.svc.rejectRefund(req.tenantId, req.user.id, id);
   }
 }

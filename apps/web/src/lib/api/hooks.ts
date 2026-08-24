@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { getActiveTenant } from '../../state/auth';
+import { getActiveTenant, getActiveUserEmail } from '../../state/auth';
 import type {
   AddContactOrderPayload,
   AddFlowNodeDto,
@@ -110,7 +110,7 @@ import type {
 // tenant chosen at login (state/auth.tsx) — computed per-call, not cached at
 // module load, since it can change after a sign-out/sign-in.
 function tenantHeaders() {
-  return { 'x-tenant': getActiveTenant() };
+  return { 'x-tenant': getActiveTenant(), 'x-user-email': getActiveUserEmail() };
 }
 
 async function api<T>(path: string): Promise<T> {
@@ -274,6 +274,14 @@ export function useSessionUser() {
     queryFn: () => api('/me'),
     staleTime: Infinity,
   });
+}
+
+/** RBAC gate — mirrors PermissionsGuard's check ('*' or the named permission) so the UI
+ * hides actions the API would reject anyway. See apps/api/src/auth/permissions.guard.ts. */
+export function useCan(permission: string): boolean {
+  const { data: user } = useSessionUser();
+  const perms = user?.permissions ?? [];
+  return perms.includes('*') || perms.includes(permission);
 }
 
 export function useTenants() {
@@ -445,6 +453,32 @@ export function useMoveTicket() {
   const queryClient = useQueryClient();
   return useMutation<TicketRow, Error, { id: string; status: MoveTicketDto['status'] }>({
     mutationFn: ({ id, status }) => patchBody(`/tickets/${id}/move`, { status }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['tickets'] }),
+  });
+}
+
+/** Manager/Admin's ticket reassignment (@Perms('ticket.assign')). */
+export function useAssignTicket() {
+  const queryClient = useQueryClient();
+  return useMutation<TicketRow, Error, { id: string; assignedUserId: string | null }>({
+    mutationFn: ({ id, assignedUserId }) => patchBody(`/tickets/${id}/assign`, { assignedUserId }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['tickets'] }),
+  });
+}
+
+/** Manager/Admin's refund approval workflow (@Perms('refund.approve')). */
+export function useApproveRefund() {
+  const queryClient = useQueryClient();
+  return useMutation<TicketRow, Error, { id: string }>({
+    mutationFn: ({ id }) => patch(`/tickets/${id}/refund/approve`),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['tickets'] }),
+  });
+}
+
+export function useRejectRefund() {
+  const queryClient = useQueryClient();
+  return useMutation<TicketRow, Error, { id: string }>({
+    mutationFn: ({ id }) => patch(`/tickets/${id}/refund/reject`),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['tickets'] }),
   });
 }

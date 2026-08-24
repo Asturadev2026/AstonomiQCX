@@ -32,20 +32,28 @@ export async function loadUser(tenantId: string, oidcSubject: string) {
       email: user.email,
       title: user.title,
       departmentId: user.departmentId,
+      role: role?.name ?? null,
       permissions: (role?.permissions as string[]) || [],
     };
   });
 }
 
 /**
- * Dev-only stand-in for a logged-in user (Guide §7 — no login flow wired into apps/web
- * yet, same rationale as tenant.middleware.ts's DEV_TENANT_HEADER). Picks a real User
- * row so writes still carry a genuine actor for audit logging/assignment; never
+ * Dev-only stand-in for a logged-in user (Guide §7 — no real Keycloak login wired into
+ * apps/web yet). When `email` is given (from the x-user-email header — see jwt.guard.ts
+ * and auth.controller.ts's dev login endpoint) it loads that exact user, so different
+ * browser sessions can be signed in as different roles for RBAC testing. Without one, it
+ * falls back to picking any real user (old sessions predating the login flow). Never
  * called in production — JwtGuard gates that. Replace with real Keycloak login (Guide §7).
  */
-export async function loadDevUser(tenantId: string) {
+export async function loadDevUser(tenantId: string, email?: string) {
   return withTenant(getPrisma(), tenantId, async (tx) => {
-    let user = await tx.user.findFirst({ where: { roleId: { not: null } }, orderBy: { name: 'asc' } });
+    let user = email
+      ? await tx.user.findFirst({ where: { email } })
+      : await tx.user.findFirst({ where: { roleId: { not: null } }, orderBy: { name: 'asc' } });
+
+    if (!user && email) throw new Error(`No user "${email}" in this workspace`);
+
     if (!user) {
       const invite = await tx.invite.findFirst({ where: { tenantId } });
       const role =
@@ -53,12 +61,12 @@ export async function loadDevUser(tenantId: string) {
         (await tx.role.findFirst({ where: { tenantId } }));
 
       if (role) {
-        const email = invite?.email ?? 'admin@workspace.local';
+        const fallbackEmail = invite?.email ?? 'admin@workspace.local';
         user = await tx.user.create({
           data: {
             tenantId,
-            name: email.split('@')[0]!,
-            email,
+            name: fallbackEmail.split('@')[0]!,
+            email: fallbackEmail,
             roleId: role.id,
             status: 'active',
             avatarColor: '#2563EB',
@@ -76,6 +84,7 @@ export async function loadDevUser(tenantId: string) {
       email: user.email,
       title: user.title,
       departmentId: user.departmentId,
+      role: role?.name ?? null,
       permissions: (role?.permissions as string[]) || [],
     };
   });

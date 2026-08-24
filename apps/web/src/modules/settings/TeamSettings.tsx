@@ -4,7 +4,7 @@ import { useToast } from '../../components/Toast';
 import { ErrorState, LoadingState } from '../../components/states';
 import type { SettingsToggles, UiRoleName } from '../../lib/api/types';
 
-const UI_ROLES = ['Admin', 'Manager', 'Executive'] as const;
+const UI_ROLES = ['Admin', 'Manager', 'Agent'] as const;
 
 const TOGGLE_META: { key: keyof SettingsToggles; title: string; desc: string }[] = [
   { key: 'autoResolve', title: 'Auto-resolve with AI', desc: 'Let Astra close routine tickets' },
@@ -46,7 +46,7 @@ export function TeamSettings() {
   function roleToUi(roleLabel: string): UiRoleName {
     if (roleLabel === 'Admin') return 'Admin';
     if (roleLabel === 'Manager') return 'Manager';
-    return 'Executive'; // Agent / TeamLead / QA / Viewer → Executive (view-only for unknown roles)
+    return 'Agent'; // TeamLead / QA / Viewer (legacy) → Agent (view-only for unknown roles)
   }
 
   if (isLoading) return <LoadingState />;
@@ -162,7 +162,7 @@ export function TeamSettings() {
                         {u.status === 'Pending' && <option value="">—</option>}
                         {UI_ROLES.map((r) => (
                           <option key={r} value={r}>
-                            {r === 'Executive' ? '🎫 Executive' : r === 'Admin' ? '🔑 Admin' : '📊 Manager'}
+                            {r === 'Agent' ? '🎫 Agent' : r === 'Admin' ? '🔑 Admin' : '📊 Manager'}
                           </option>
                         ))}
                       </select>

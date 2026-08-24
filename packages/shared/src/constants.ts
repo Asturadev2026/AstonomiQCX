@@ -76,6 +76,7 @@ export type RoleName = (typeof DEFAULT_ROLES)[number];
 export const PERMISSIONS = [
   // tickets
   'ticket.view.all',
+  'ticket.view.department',
   'ticket.view.assigned',
   'ticket.create',
   'ticket.move',
