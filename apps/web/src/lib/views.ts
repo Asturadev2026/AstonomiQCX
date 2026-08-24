@@ -18,6 +18,8 @@ export interface ViewDef {
   group: NavGroup;
   /** key into NavCounts for the sidebar badge, if this item shows one */
   badge?: 'inbox' | 'mentions' | 'slaAtRisk';
+  /** Visible only in the AstonomiQ platform tenant (the 'astonomiq' workspace) — hidden for every customer tenant's admin. */
+  platformOnly?: boolean;
 }
 
 export const VIEWS: ViewDef[] = [
@@ -41,7 +43,7 @@ export const VIEWS: ViewDef[] = [
   { id: 'workforce', title: 'Workforce', sub: 'Live agent status, roster and forecast', group: 'Service Ops' },
   { id: 'contactcentre', title: 'Contact Centre', sub: 'IVR, live call queue and supervisor monitoring', group: 'Service Ops' },
   { id: 'telephony', title: 'Cloud Telephony', sub: 'Numbers, IVR, live console, masking & call records — end to end', group: 'Service Ops' },
-  { id: 'fieldservice', title: 'Field Service', sub: 'On-site visits, installs & warranty repairs', group: 'Service Ops' },
+  { id: 'fieldservice', title: '3rd Party Field Service', sub: 'On-site visits, installs & warranty repairs', group: 'Service Ops' },
   { id: 'priomatrix', title: 'Priority Matrix', sub: 'How urgency × impact sets ticket priority', group: 'Service Ops' },
   // Engage & Analyse
   { id: 'campaigns', title: 'Campaigns', sub: 'Proactively reach customers on WhatsApp', group: 'Engage & Analyse' },
@@ -52,7 +54,7 @@ export const VIEWS: ViewDef[] = [
   { id: 'qa', title: 'Auto QA', sub: 'Every interaction scored — no sampling', group: 'Engage & Analyse' },
   { id: 'analytics', title: 'Analytics', sub: 'Trends, cost savings and SLA performance', group: 'Engage & Analyse' },
   // Admin
-  { id: 'tenants', title: 'Tenants', sub: 'Manage workspaces, plans and status', group: 'Admin' },
+  { id: 'tenants', title: 'Tenants', sub: 'Manage workspaces, plans and status', group: 'Admin', platformOnly: true },
   { id: 'audit', title: 'Audit Log', sub: 'Who did what, and when', group: 'Admin' },
   { id: 'billing', title: 'Billing & Plans', sub: 'Subscription, usage and invoices', group: 'Admin' },
   { id: 'settings', title: 'Team & Settings', sub: 'Manage your workspace', group: 'Admin' },

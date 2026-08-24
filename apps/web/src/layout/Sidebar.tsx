@@ -3,28 +3,24 @@ import { NAV_GROUPS, VIEWS } from '../lib/views';
 import { NavIcon } from '../components/NavIcon';
 import { useNavCounts, useSessionUser } from '../lib/api/hooks';
 import { useAuth } from '../state/auth';
+import logo from '../assets/logo.png';
 
 export function Sidebar() {
   const { data: counts } = useNavCounts();
   const { data: user } = useSessionUser();
-  const { signOut } = useAuth();
+  const { signOut, tenantSubdomain } = useAuth();
+  const isPlatformTenant = tenantSubdomain === 'astonomiq';
 
   return (
     <aside className="side">
       <div className="brand">
-        <div className="logo">
-          <i />
-        </div>
-        <div>
-          <b>AstronomiQ</b>
-          <span>{user?.tenantName ?? ''}</span>
-        </div>
+        <img src={logo} alt="AstonomiQ" className="brand-logo-img" />
       </div>
 
-      {NAV_GROUPS.map((group) => (
+      {NAV_GROUPS.filter((group) => group !== 'Admin' || user?.role === 'Admin').map((group) => (
         <div key={group}>
           <div className="navlabel">{group}</div>
-          {VIEWS.filter((v) => v.group === group).map((v) => (
+          {VIEWS.filter((v) => v.group === group && (!v.platformOnly || isPlatformTenant)).map((v) => (
             <NavLink
               key={v.id}
               to={`/${v.id}`}

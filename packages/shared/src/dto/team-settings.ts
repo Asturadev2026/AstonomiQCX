@@ -49,14 +49,14 @@ export interface InviteDto {
 }
 
 /** The three UI-facing roles the Team Settings dropdown exposes. */
-export const UI_ROLES = ['Admin', 'Manager', 'Executive'] as const;
+export const UI_ROLES = ['Admin', 'Manager', 'Agent'] as const;
 export type UiRoleName = (typeof UI_ROLES)[number];
 
-/** Maps the UI label to the internal DB role name. */
+/** Maps the UI label to the internal DB role name (currently 1:1). */
 export const UI_ROLE_TO_DB: Record<UiRoleName, string> = {
   Admin: 'Admin',
   Manager: 'Manager',
-  Executive: 'Agent',
+  Agent: 'Agent',
 };
 
 export interface UpdateUserRoleDto {

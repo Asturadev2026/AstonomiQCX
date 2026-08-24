@@ -1,4 +1,4 @@
-# AstronomiQ CX — Implementation Plan
+# AstonomiQ CX — Implementation Plan
 ### End-to-end build spec for a 2-person team · No hardcoded data — everything database-backed
 
 **Version 1.0 · July 2026 · Companion to:** `AstronomiQ-CX-Build-and-Deploy-Guide.md` (the "Guide", §-references point there) and `AstronomiQ-CX_1.html` (the "Prototype", pixel + interaction spec).
@@ -24,7 +24,7 @@
 | Meta | Meta developer app + WhatsApp Cloud API **test number** | Free; needed Phase D |
 | Telephony | Exotel trial/sandbox account | Needed Phase F |
 | Local | Node 20 LTS, pnpm 9, Docker Desktop | both machines |
-| Domains | `astronomiq.in` (or dev domain) + wildcard subdomain support | Local dev uses `*.localtest.me` which resolves to 127.0.0.1 — free wildcard subdomains for tenant testing |
+| Domains | `astonomiq.in` (or dev domain) + wildcard subdomain support | Local dev uses `*.localtest.me` which resolves to 127.0.0.1 — free wildcard subdomains for tenant testing |
 
 ---
 
@@ -33,7 +33,7 @@
 Follow Guide §4 layout exactly:
 
 ```
-astronomiq-cx/
+astonomiq-cx/
 ├── apps/ (api, workers, gateways, web)
 ├── packages/ (db, shared, config)
 ├── infra/ (docker, terraform later, k8s later)

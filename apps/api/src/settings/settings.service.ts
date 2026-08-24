@@ -23,8 +23,9 @@ const CHANNEL_META: Record<string, { label: string; icon: string; color: string 
   salesforce: { label: 'Salesforce CRM', icon: '📊', color: '#4F46E5' },
 };
 
-// Agent is displayed as "Executive" in the UI (three-role system).
-const ROLE_LABEL: Record<string, string> = { Agent: 'Executive', TeamLead: 'Team Lead' };
+// Legacy DB role names (TeamLead/QA/Viewer) predate the three-role system (Admin/Manager/
+// Agent) but may still exist on old rows — labeled plainly rather than hidden.
+const ROLE_LABEL: Record<string, string> = { TeamLead: 'Team Lead' };
 const ROLE_CLASS: Record<string, string> = { Admin: 'admin', Manager: 'lead', TeamLead: 'lead' };
 
 function initials(name: string): string {
@@ -166,9 +167,11 @@ export class SettingsService {
       // Ensure the role exists in this tenant — seed it if missing.
       let role = await tx.role.findFirst({ where: { tenantId, name: dbRoleName } });
       if (!role) {
+        // Manager is scoped to their own department (ticket.view.department), not the
+        // whole org — see TicketsService.viewScope(). Admin's '*' bypasses scoping entirely.
         const PERMS_BY_ROLE: Record<string, string[]> = {
           Admin: ['*'],
-          Manager: ['ticket.view.all', 'ticket.create', 'ticket.move', 'ticket.assign', 'sla.view', 'refund.approve', 'analytics.view', 'audit.view'],
+          Manager: ['ticket.view.department', 'ticket.create', 'ticket.move', 'ticket.assign', 'sla.view', 'refund.approve', 'analytics.view', 'audit.view'],
           Agent: ['ticket.view.assigned', 'ticket.move', 'conversation.view', 'conversation.reply'],
         };
         role = await tx.role.create({

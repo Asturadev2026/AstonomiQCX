@@ -57,7 +57,7 @@ export class TelephonyService {
       configured: isExotelConfigured(),
       maskedSid: env.EXOTEL_SID ? mask(env.EXOTEL_SID) : null,
       maskedToken: env.EXOTEL_API_TOKEN ? mask(env.EXOTEL_API_TOKEN) : null,
-      webhookUrl: 'https://api.astronomiq.in/api/v1/webhooks/exotel/call',
+      webhookUrl: 'https://api.astonomiq.in/api/v1/webhooks/exotel/call',
       subdomain: env.EXOTEL_SUBDOMAIN || 'api.exotel.com',
     };
   }

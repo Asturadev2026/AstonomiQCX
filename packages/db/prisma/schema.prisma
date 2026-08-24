@@ -1,4 +1,4 @@
-// AstronomiQ CX — full schema. Mirrors Guide §6 DDL + Implementation Plan §3.1 gap tables.
+// AstonomiQ CX — full schema. Mirrors Guide §6 DDL + Implementation Plan §3.1 gap tables.
 // Conventions: every business model has tenantId + @@index([tenantId, ...]) + RLS
 // (RLS lives in prisma/rls.sql — Prisma cannot manage policies).
 

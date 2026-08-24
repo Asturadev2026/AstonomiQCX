@@ -1,4 +1,4 @@
-# @aq/web — the AstronomiQ CX frontend
+# @aq/web — the AstonomiQ CX frontend
 
 Exact port of `docs/AstronomiQ-CX_1.html`. That file is the pixel spec — keep it
 open in a browser next to your editor.

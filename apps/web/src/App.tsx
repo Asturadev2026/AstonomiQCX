@@ -69,7 +69,8 @@ const PORTED: Record<string, () => JSX.Element | null> = {
 };
 
 export function App() {
-  const { authed } = useAuth();
+  const { authed, tenantSubdomain } = useAuth();
+  const isPlatformTenant = tenantSubdomain === 'astonomiq';
 
   if (!authed) {
     return (
@@ -83,6 +84,11 @@ export function App() {
     <Routes>
       <Route element={<AppShell />}>
         {VIEWS.map((v) => {
+          // Direct-URL access, not just nav visibility — a non-platform tenant
+          // gets bounced the same as any other unknown route (see catch-all below).
+          if (v.platformOnly && !isPlatformTenant) {
+            return <Route key={v.id} path={`/${v.id}`} element={<Navigate to="/overview" replace />} />;
+          }
           const Page = PORTED[v.id] ?? (() => <StubPage viewId={v.id} />);
           return <Route key={v.id} path={`/${v.id}`} element={<Page />} />;
         })}

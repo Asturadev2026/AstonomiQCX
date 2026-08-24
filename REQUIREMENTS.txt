@@ -1,4 +1,4 @@
-AstronomiQ CX — Developer Requirements & Setup
+AstonomiQ CX — Developer Requirements & Setup
 ================================================
 Read this first. Full context: README.md, then docs/AstronomiQ-CX-Implementation-Plan.md.
 
@@ -30,7 +30,7 @@ Editor: VS Code recommended, extensions: Prisma, ESLint, Prettier.
 2. FIRST-TIME SETUP (in order)
 ------------------------------------------------------------------
 # --- Step 1: install (always) ---
-git clone <repo> && cd astronomiq-cx
+git clone <repo> && cd astonomiq-cx
 cp .env.example .env                     # local defaults work as-is
 pnpm install                             # all workspaces, one command
 
@@ -58,7 +58,7 @@ pnpm dev                                 # or: everything at once via turbo
 ------------------------------------------------------------------
 3000  web (Vite dev server; proxies /api → 4000)
 4000  api (NestJS — 🚧 once built)
-5432  PostgreSQL (user aq / pass aq / db astronomiq — dev only)
+5432  PostgreSQL (user aq / pass aq / db astonomiq — dev only)
 6379  Redis
 8080  Keycloak (admin/admin — dev only)
 

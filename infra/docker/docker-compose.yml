@@ -1,7 +1,7 @@
 # Local dev infrastructure (Guide §17).
 # App services (api/workers/web) run via `pnpm dev` on the host for fast reload;
 # their Dockerfiles are added in Phase E when we containerize for staging.
-name: astronomiq
+name: astonomiq
 
 services:
   db:
@@ -9,13 +9,13 @@ services:
     environment:
       POSTGRES_USER: aq
       POSTGRES_PASSWORD: aq
-      POSTGRES_DB: astronomiq
+      POSTGRES_DB: astonomiq
     ports:
       - "15432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U aq -d astronomiq"]
+      test: ["CMD-SHELL", "pg_isready -U aq -d astonomiq"]
       interval: 5s
       timeout: 3s
       retries: 10

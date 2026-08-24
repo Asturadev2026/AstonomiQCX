@@ -19,9 +19,9 @@ async function adminToken(): Promise<string> {
 export async function createKeycloakUser(email: string, name: string): Promise<string> {
   if (!env.OIDC_ISSUER) throw new Error('OIDC_ISSUER is not configured');
   const token = await adminToken();
-  const base = env.OIDC_ISSUER.replace('/realms/astronomiq', '');
+  const base = env.OIDC_ISSUER.replace('/realms/astonomiq', '');
 
-  await fetch(`${base}/admin/realms/astronomiq/users`, {
+  await fetch(`${base}/admin/realms/astonomiq/users`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -35,7 +35,7 @@ export async function createKeycloakUser(email: string, name: string): Promise<s
 
   // find the new user's id (Keycloak's "sub") to link in our database
   const found = await fetch(
-    `${base}/admin/realms/astronomiq/users?email=${encodeURIComponent(email)}`,
+    `${base}/admin/realms/astonomiq/users?email=${encodeURIComponent(email)}`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
   const users = (await found.json()) as Array<{ id: string }>;

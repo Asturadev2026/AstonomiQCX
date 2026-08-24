@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import { getPrisma } from '../client';
-import { withTenant } from '../with-tenant';
+import { withTenant, type Tx } from '../with-tenant';
 import { nextRef } from '../next-ref';
 
 /**
@@ -299,15 +299,19 @@ const NUDGE_RULES = [
 // Default roles (Guide §7.5), using the canonical permission strings from
 // @aq/shared's PERMISSIONS list. Admin's '*' means "can do everything" — see
 // PermissionsGuard in apps/api/src/auth/permissions.guard.ts.
+// Three-role system (Admin/Manager/Agent — Guide's RBAC pass). Manager is scoped to
+// their own department via ticket.view.department, not the whole org (see
+// TicketsService.viewScope()); Admin's '*' bypasses scoping entirely. TeamLead/QA/Viewer
+// are legacy rows kept only so pre-existing users with those roles don't break.
 const DEFAULT_ROLES = [
   { name: 'Admin', permissions: ['*'] },
   {
     name: 'Manager',
-    permissions: ['ticket.view.all', 'ticket.create', 'ticket.move', 'ticket.assign', 'sla.view', 'refund.approve', 'analytics.view', 'audit.view'],
+    permissions: ['ticket.view.department', 'ticket.create', 'ticket.move', 'ticket.assign', 'sla.view', 'refund.approve', 'analytics.view', 'audit.view'],
   },
   {
     name: 'TeamLead',
-    permissions: ['ticket.view.all', 'ticket.create', 'ticket.move', 'ticket.assign', 'sla.view'],
+    permissions: ['ticket.view.department', 'ticket.create', 'ticket.move', 'ticket.assign', 'sla.view'],
   },
   {
     name: 'Agent',
@@ -315,6 +319,17 @@ const DEFAULT_ROLES = [
   },
   { name: 'QA', permissions: ['conversation.view', 'qa.view', 'qa.audit'] },
   { name: 'Viewer', permissions: ['analytics.view'] },
+];
+
+// Fixed, memorable demo logins for testing the three-role system — one Admin/Manager/Agent
+// per tenant. Dev-only (see auth.controller.ts's login endpoint and the "no local passwords"
+// note on User.oidcSubject) — replaced entirely once real Keycloak login lands. The shared
+// password these sign in with lives in auth.controller.ts's DEMO_LOGIN_PASSWORD, not here —
+// this file's main() runs (and exits the process) on import, so it can't be imported there.
+const DEMO_LOGINS: { name: string; role: string; emailPrefix: string }[] = [
+  { name: 'Demo Admin', role: 'Admin', emailPrefix: 'admin' },
+  { name: 'Demo Manager', role: 'Manager', emailPrefix: 'manager' },
+  { name: 'Demo Agent', role: 'Agent', emailPrefix: 'agent' },
 ];
 
 // One default SLA policy per priority (Guide §8.3/§11) — without these,
@@ -447,6 +462,23 @@ const CALL_DISPOSITIONS = ['Query resolved', 'Escalated to senior', 'Callback sc
 const FIELD_TECHNICIANS = ['Ramesh Yadav', 'Manoj Tiwari', 'Ravi Kumar', 'Suresh Iyer'];
 const FIELD_VISIT_KINDS = ['installation', 'repair', 'pickup'];
 const FIELD_VISIT_STATUSES = ['completed', 'completed', 'in_progress', 'en_route', 'scheduled', 'scheduled', 'scheduled'];
+
+/** Upserts the fixed Admin/Manager/Agent demo logins for one tenant — see DEMO_LOGINS. */
+async function seedDemoLogins(tx: Tx, tenantId: string, subdomain: string) {
+  const firstDept = await tx.department.findFirst({ where: { tenantId }, orderBy: { name: 'asc' } });
+  for (const d of DEMO_LOGINS) {
+    const role = await tx.role.findFirst({ where: { tenantId, name: d.role } });
+    if (!role) continue;
+    const email = `${d.emailPrefix}@${subdomain}.astonomiq.dev`;
+    const departmentId = d.role === 'Admin' ? null : firstDept?.id ?? null;
+    await tx.user.upsert({
+      where: { tenantId_email: { tenantId, email } },
+      update: { roleId: role.id, departmentId, status: 'active' },
+      create: { tenantId, name: d.name, email, roleId: role.id, departmentId, status: 'active', avatarColor: '#2563EB', title: d.role },
+    });
+  }
+  console.log(`Seeded ${DEMO_LOGINS.length} demo logins for ${subdomain}.`);
+}
 
 async function main() {
   const prisma = getPrisma();
@@ -1285,6 +1317,8 @@ async function main() {
     }
   });
 
+  await withTenant(prisma, tenant.id, (tx) => seedDemoLogins(tx, tenant.id, tenant.subdomain));
+
   // A second, lightweight tenant — a different demo business to switch into at
   // login or via the Tenants admin page. Deliberately sparse (no tickets or agent
   // flow beyond AgentBuilder's own default) so it reads as a distinct, mostly-empty
@@ -1305,6 +1339,8 @@ async function main() {
       });
     }
   });
+
+  await withTenant(prisma, secondTenant.id, (tx) => seedDemoLogins(tx, secondTenant.id, secondTenant.subdomain));
 
   await withTenant(prisma, secondTenant.id, async (tx) => {
     const existingContacts = await tx.contact.count({ where: { tenantId: secondTenant.id } });
@@ -1351,6 +1387,47 @@ async function main() {
       }
     }
     console.log(`Seeded ${NORTHWIND_KB_ARTICLES.length} Northwind KB articles.`);
+  });
+
+  // Platform tenant — AstonomiQ's own internal workspace. Its Admin role is
+  // the platform super-admin: the only one with the Tenants admin page
+  // (gated on tenantSubdomain === 'astonomiq' in apps/web/src/App.tsx and
+  // Sidebar.tsx via ViewDef.platformOnly). No demo data beyond one admin
+  // user — this tenant isn't a customer workspace, just the admin console.
+  const platformTenant = await prisma.tenant.upsert({
+    where: { subdomain: 'astonomiq' },
+    update: {},
+    create: { name: 'AstonomiQ', subdomain: 'astonomiq' },
+  });
+  console.log(`Seeded tenant: ${platformTenant.name} (${platformTenant.id})`);
+
+  await withTenant(prisma, platformTenant.id, async (tx) => {
+    const platformRoleByName = new Map<string, string>();
+    for (const role of DEFAULT_ROLES) {
+      const row = await tx.role.upsert({
+        where: { tenantId_name: { tenantId: platformTenant.id, name: role.name } },
+        update: { permissions: role.permissions },
+        create: { tenantId: platformTenant.id, name: role.name, permissions: role.permissions },
+      });
+      platformRoleByName.set(role.name, row.id);
+    }
+
+    const adminRoleId = platformRoleByName.get('Admin');
+    const existingAdmin = await tx.user.findFirst({ where: { tenantId: platformTenant.id, roleId: adminRoleId } });
+    if (!existingAdmin) {
+      await tx.user.create({
+        data: {
+          tenantId: platformTenant.id,
+          name: 'AstonomiQ Admin',
+          email: 'admin@astonomiq.in',
+          avatarColor: '#2563EB',
+          title: 'Platform Super Admin',
+          roleId: adminRoleId,
+          status: 'active',
+        },
+      });
+      console.log('Seeded AstonomiQ platform admin user.');
+    }
   });
 }
 

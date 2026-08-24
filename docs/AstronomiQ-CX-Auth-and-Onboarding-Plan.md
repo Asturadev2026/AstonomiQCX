@@ -1,4 +1,4 @@
-# AstronomiQ CX — Auth & Tenant Onboarding Plan
+# AstonomiQ CX — Auth & Tenant Onboarding Plan
 
 **Status:** proposed · **Owner:** Samiksha · **Date:** 2026-08-04
 **Supersedes:** the "auth not wired yet" stubs referenced in `apps/web/src/pages/Login.tsx`,
@@ -94,7 +94,7 @@ to miss one, and a missed one is a silent open endpoint. Instead: one `APP_GUARD
 ### Identity
 
 ```
-Keycloak realm "astronomiq"  ──►  one Keycloak user per email (username = email)
+Keycloak realm "astonomiq"  ──►  one Keycloak user per email (username = email)
                                           │  sub (uuid)
                     ┌─────────────────────┴──────────────────────┐
                     ▼                                            ▼
@@ -138,16 +138,16 @@ without changing behaviour; Phase 5–6 is the switch that makes things actually
 ### Phase 0 — Make the Keycloak realm real *(infra, ~half a day)*
 
 `infra/docker/docker-compose.yml` starts `keycloak:24` with `start-dev` and **no realm**, so
-`OIDC_ISSUER=http://localhost:8080/realms/astronomiq` currently 404s. (Note: `.env` already has
+`OIDC_ISSUER=http://localhost:8080/realms/astonomiq` currently 404s. (Note: `.env` already has
 a real-looking `OIDC_CLIENT_SECRET`, so a realm may exist by hand on your machine — it must be
 committed as code either way, or nobody else can run the app.)
 
-- **New** `infra/keycloak/realm-astronomiq.json` — committed realm export:
-  - realm `astronomiq`, `loginWithEmailAllowed: true`, `registrationAllowed: false`
+- **New** `infra/keycloak/realm-astonomiq.json` — committed realm export:
+  - realm `astonomiq`, `loginWithEmailAllowed: true`, `registrationAllowed: false`
   - client **`aq-api`** — confidential, `serviceAccountsEnabled`, `directAccessGrantsEnabled`,
     service-account roles `realm-management: manage-users, view-users, query-users`
   - client **`aq-web`** — public, PKCE `S256`, redirect URIs `http://*.localtest.me:3000/*`
-    and `https://*.app.astronomiq.in/*` *(provisioned now, wired later — see §2)*
+    and `https://*.app.astonomiq.in/*` *(provisioned now, wired later — see §2)*
   - brute-force detection on; password policy (length 10, upper, digit, special)
 - **Edit** `infra/docker/docker-compose.yml` — keycloak `command: start-dev --import-realm`,
   mount `./keycloak:/opt/keycloak/data/import`, add a healthcheck.
@@ -178,7 +178,7 @@ token request for `aq-api` succeeds.
   - `resolve_tenant_by_oidc_subject(text) returns uuid` — `SECURITY DEFINER`, `STABLE`,
     `search_path = public`. **This is the missing function `oidc.ts` already calls.**
   - `resolve_platform_admin_by_oidc_subject(text) returns uuid` — same shape.
-  - `revoke execute ... from public; grant execute ... to astronomiq_app;`
+  - `revoke execute ... from public; grant execute ... to astonomiq_app;`
   - `platform_admins` stays **out** of the RLS loop (no `tenant_id` to filter on), same as
     `tenants` and `plans` — call that out in the file's comment block so the next reader
     doesn't "fix" it.
@@ -195,10 +195,10 @@ Resend / SES / Postmark / Google Workspace all work by env change alone.
 
 - **New** `apps/api/src/mail/mail.module.ts`, `mail.service.ts`
 - **New** `apps/api/src/mail/templates/tenant-welcome.ts`, `team-invite.ts`,
-  `password-changed.ts` — HTML + plain-text, AstronomiQ-branded, no external images
+  `password-changed.ts` — HTML + plain-text, AstonomiQ-branded, no external images
 - **New** `apps/api/src/mail/workspace-url.ts` —
   `workspaceUrl(subdomain)` → `${APP_PROTOCOL}://${subdomain}.${APP_BASE_DOMAIN}`
-  → dev `http://acme.localtest.me:3000`, prod `https://acme.app.astronomiq.in`.
+  → dev `http://acme.localtest.me:3000`, prod `https://acme.app.astonomiq.in`.
   Replaces the single hardcoded `APP_URL=http://shopnova.localtest.me:3000` in `.env`,
   which cannot work for more than one tenant.
 - **Edit** `apps/api/src/config/env.ts` + `.env.example` — see §6.
@@ -468,7 +468,7 @@ New (add to `.env.example` and `apps/api/src/config/env.ts`'s zod schema):
 ```ini
 # ---- app URLs (replaces the single-tenant APP_URL) ----
 APP_PROTOCOL=http                    # https in production
-APP_BASE_DOMAIN=localtest.me:3000    # app.astronomiq.in in production
+APP_BASE_DOMAIN=localtest.me:3000    # app.astonomiq.in in production
 
 # ---- mail (SMTP — provider-agnostic) ----
 SMTP_HOST=
@@ -476,11 +476,11 @@ SMTP_PORT=587
 SMTP_SECURE=false
 SMTP_USER=
 SMTP_PASS=
-MAIL_FROM=no-reply@astronomiq.in     # must be on a domain with SPF+DKIM published
-MAIL_FROM_NAME=AstronomiQ CX
+MAIL_FROM=no-reply@astonomiq.in     # must be on a domain with SPF+DKIM published
+MAIL_FROM_NAME=AstonomiQ CX
 
 # ---- keycloak realm admin (the aq-api service account) ----
-KEYCLOAK_REALM=astronomiq            # currently parsed out of OIDC_ISSUER by string replace
+KEYCLOAK_REALM=astonomiq            # currently parsed out of OIDC_ISSUER by string replace
 ```
 
 Changed: `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` become **required** in the zod
@@ -494,7 +494,7 @@ is needed — `jose` is already there for token verification, and Keycloak's Adm
 reached with plain `fetch`, as `keycloak-admin.ts` already does.
 
 One cleanup worth doing while in `keycloak-admin.ts`: it derives the admin base URL with
-`env.OIDC_ISSUER.replace('/realms/astronomiq', '')` — a hardcoded realm name in a string
+`env.OIDC_ISSUER.replace('/realms/astonomiq', '')` — a hardcoded realm name in a string
 replace. Use `KEYCLOAK_REALM` and a proper URL parse.
 
 ---
