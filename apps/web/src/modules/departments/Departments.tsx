@@ -168,7 +168,7 @@ export function Departments() {
               </div>
               <div>
                 <div className="dn">{d.name}</div>
-                <div className="dhd">Head: {d.headName ?? '—'}</div>
+                <div className="dhd">{d.headName ? `Head: ${d.headName}` : 'Head'}</div>
               </div>
               <div className="dcnt">
                 <b>{d.openTicketCount}</b>
