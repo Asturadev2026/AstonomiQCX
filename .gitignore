@@ -25,6 +25,7 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+.claude/
 
 # docker volumes (if mapped locally)
 pgdata/
