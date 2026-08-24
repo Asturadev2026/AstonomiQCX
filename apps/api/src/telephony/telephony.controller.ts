@@ -28,7 +28,7 @@ export class TelephonyController {
 
   @Post('test-call')
   sendTestCall(@Body() dto: SendTestCallDto) {
-    return this.svc.sendTestCall(dto.toNumber);
+    return this.svc.sendTestCall(dto.toNumber, dto.callerId);
   }
 
   @Get('numbers')

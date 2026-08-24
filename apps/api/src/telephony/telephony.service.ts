@@ -57,32 +57,44 @@ export class TelephonyService {
       configured: isExotelConfigured(),
       maskedSid: env.EXOTEL_SID ? mask(env.EXOTEL_SID) : null,
       maskedToken: env.EXOTEL_API_TOKEN ? mask(env.EXOTEL_API_TOKEN) : null,
-      webhookUrl: 'https://api.astronomiq.in/api/v1/webhooks/exotel/call',
+      // Was hardcoded to the prod domain regardless of environment — dev/staging always
+      // showed a webhook URL that couldn't possibly be the one actually configured on the
+      // Exotel side. PUBLIC_WEBHOOK_BASE_URL > APP_URL > the old hardcoded guess.
+      webhookUrl: `${env.PUBLIC_WEBHOOK_BASE_URL || env.APP_URL || 'https://api.astronomiq.in'}/api/v1/webhooks/exotel/call`,
       subdomain: env.EXOTEL_SUBDOMAIN || 'api.exotel.com',
     };
   }
 
   /**
    * Real Exotel Connect-Two-Numbers call (Guide §13.4) — rings the given
-   * number and, once answered, bridges it back to itself via our registered
-   * CallerId, as a pure connectivity/credentials test. Gracefully degrades
-   * when Exotel isn't configured, same pattern as Sarvam/ElevenLabs/WhatsApp.
+   * number and, once answered, bridges it back to itself via the registered
+   * CallerId, as a pure connectivity/credentials test.
+   *
+   * IMPORTANT: Exotel requires a registered virtual number (DID) as `CallerId`.
+   * Pass your Exotel virtual number as `callerId`. If omitted, `toNumber` is
+   * used as a fallback but this will only succeed if Exotel has pre-registered
+   * that number as a caller-id on your account (sandbox limitation).
    */
-  async sendTestCall(toNumber: string): Promise<TestCallResultDto> {
+  async sendTestCall(toNumber: string, callerId?: string): Promise<TestCallResultDto> {
     if (!isExotelConfigured()) {
       return { configured: false };
     }
     const subdomain = env.EXOTEL_SUBDOMAIN || 'api.exotel.com';
     const url = `https://${env.EXOTEL_API_KEY}:${env.EXOTEL_API_TOKEN}@${subdomain}/v1/Accounts/${env.EXOTEL_SID}/Calls/connect.json`;
+    // CallerId must be a registered Exotel virtual DID — fall back to toNumber for sandbox demos.
+    const resolvedCallerId = callerId?.trim() || toNumber;
+    if (!callerId) {
+      this.logger.warn('sendTestCall: no callerId provided — using toNumber as CallerId. For real Exotel accounts, pass your virtual DID as callerId.');
+    }
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ From: toNumber, To: toNumber, CallerId: toNumber }),
+      body: new URLSearchParams({ From: toNumber, To: toNumber, CallerId: resolvedCallerId }),
     });
     if (!res.ok) {
       const detail = await res.text();
       this.logger.warn(`Exotel test call failed: ${res.status} ${detail}`);
-      throw new Error(`Exotel rejected the test call (${res.status}) — check credentials`);
+      throw new Error(`Exotel rejected the test call (${res.status}) — check credentials and ensure CallerId is a registered virtual number`);
     }
     const body = (await res.json()) as { Call?: { Sid?: string; Status?: string } };
     return { configured: true, callSid: body.Call?.Sid, status: body.Call?.Status };

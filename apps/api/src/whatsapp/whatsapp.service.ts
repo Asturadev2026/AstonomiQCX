@@ -117,23 +117,27 @@ export class WhatsappService {
       channel: 'whatsapp',
     });
 
-    await this.conversations.appendMessage(tenantId, conversation.id, { senderType: 'customer', body: text });
+    // Logged in the background — the AI call below already has the customer's message via
+    // `text` directly, so it doesn't need this write to finish first (same fire-and-forget
+    // pattern AiController.ask() already uses for the same purpose on the chat/SSE path).
+    const logInbound = this.conversations
+      .appendMessage(tenantId, conversation.id, { senderType: 'customer', body: text })
+      .catch((err) => this.logger.warn(`Failed to log inbound WhatsApp message: ${(err as Error).message}`));
 
     // Guide §10.4: same Astra brain answers on every channel.
-    const answer = await this.ai.ask(tenantId, text, { contactId: contact.id, conversationId: conversation.id, channel: 'whatsapp' });
-    const replyText = !answer.configured
-      ? "We're having a temporary issue — our team will follow up with you shortly."
-      : answer.escalate
-        ? `Thanks — I've raised this with our team (ref ${answer.ticketRef}). They'll follow up shortly.`
-        : answer.answer ?? '';
+    // language: 'auto' — LLM mirrors whichever language the customer wrote in (English or Hindi).
+    const answer = await this.ai.ask(tenantId, text, { language: 'auto', contactId: contact.id, conversationId: conversation.id, channel: 'whatsapp' });
+    const replyText = answer.answer ?? '';
 
-    await this.conversations.appendMessage(tenantId, conversation.id, {
-      senderType: 'bot',
-      body: replyText,
-      sources: answer.sources,
-    });
-
-    await this.sendMessage(message.from, replyText);
+    // Logging the bot's reply and actually sending it to the customer are independent of each
+    // other — don't make the customer wait for our own DB write before they get their message.
+    await Promise.all([
+      logInbound,
+      this.conversations
+        .appendMessage(tenantId, conversation.id, { senderType: 'bot', body: replyText, sources: answer.sources })
+        .catch((err) => this.logger.warn(`Failed to log outbound WhatsApp message: ${(err as Error).message}`)),
+      this.sendMessage(message.from, replyText),
+    ]);
   }
 
   /** Real outbound send via Meta's Graph API — Guide §13. */

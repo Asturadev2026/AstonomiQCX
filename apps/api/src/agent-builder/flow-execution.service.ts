@@ -1,14 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { getPrisma, withTenant, type Order } from '@aq/db';
-import type { AgentFlowDefinition, AstraAnswerDto, FlowNode } from '@aq/shared';
+import type { AgentFlowDefinition, AstraAnswerDto, FlowNode, SupportedLanguage } from '@aq/shared';
 import { KbService } from '../kb/kb.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { isConfigured, llmComplete, LlmAuthError } from '../ai/llm';
+import { languageInstruction, resolveLanguage, type Lang } from '../ai/language';
+import * as R from '../ai/replies';
 import { stripMarkdownForSpeech, VOICE_STYLE_INSTRUCTION } from '../ai/reply-style';
 import { AgentFlowService } from './agent-flow.service';
 
 interface RunOptions {
-  language?: string;
+  language?: SupportedLanguage;
   contactId?: string;
   conversationId?: string;
   channel?: 'chat' | 'whatsapp' | 'voice';
@@ -36,18 +38,6 @@ function isRefundEligible(order: Order, windowDays: number): boolean {
   if (order.status !== 'delivered') return false;
   const daysSinceOrder = (Date.now() - order.createdAt.getTime()) / 86_400_000;
   return daysSinceOrder <= windowDays;
-}
-
-function ineligibleReason(order: Order, windowDays: number): string {
-  if (order.status === 'refunded') return 'already refunded';
-  if (order.status === 'cancelled') return 'order cancelled';
-  if (order.status !== 'delivered') return `not yet delivered (currently ${order.status ?? 'unknown'})`;
-  return `delivered more than ${windowDays} days ago`;
-}
-
-function formatOrderLine(order: Order, reason?: string): string {
-  const base = `- ${order.extRef ?? order.id}: "${order.description ?? 'item'}" — ₹${order.amount ?? '?'}`;
-  return reason ? `${base} (${reason})` : base;
 }
 
 /**
@@ -81,20 +71,35 @@ export class FlowExecutionService {
      */
     llmFn?: (prompt: string) => Promise<string>,
   ): Promise<AstraAnswerDto> {
+    const language = options.language ?? 'auto';
+    // Most replies below this point are canned templates that deliberately never reach the LLM
+    // (see ../ai/replies.ts), so they can't rely on the model to mirror the customer's language
+    // the way the send_reply fallback does — they need an answer up front.
+    const lang = resolveLanguage(language, question);
+
     if (!isConfigured()) {
-      return { answer: null, escalate: false, configured: false, sources: [], ticketRef: null, visitedNodeIds: [] };
+      return { answer: R.notConfigured(lang), escalate: false, configured: false, sources: [], ticketRef: null, visitedNodeIds: [] };
     }
 
     // Use the preloaded flow when available; only fall back to DB when called directly.
     const flow = preloadedFlow !== undefined ? preloadedFlow : await this.flows.findPublishedChatFlow(tenantId);
     if (!flow) {
       // Caller (AiService) should have checked first — fall back safely rather than 500.
-      return { answer: null, escalate: false, configured: false, sources: [], ticketRef: null, visitedNodeIds: [] };
+      return { answer: R.notConfigured(lang), escalate: false, configured: false, sources: [], ticketRef: null, visitedNodeIds: [] };
     }
 
     const definition = flow.definition as unknown as AgentFlowDefinition;
-    const language = options.language ?? 'en';
     const ctx: ExecContext = {};
+    const t0 = Date.now(); // [PROFILE] temporary — remove before shipping
+
+    // Kicked off speculatively from inside detect_intent (see below) only when intent isn't
+    // resolved by an instant regex/keyword match and has to go through the LLM classifier —
+    // that's the one case where fetch_data's later DB round-trip (~1s, India↔us-east-1) can
+    // run concurrently with the classifier call (~1s) instead of stacking after it. A `.catch`
+    // is attached solely to stop Node from logging an "unhandled rejection" if the classified
+    // intent turns out not to need order data at all and this ends up never awaited — fetch_data
+    // still awaits the ORIGINAL promise below, so a real failure still propagates normally there.
+    let speculativeOrdersPromise: Promise<Order[]> | null = null;
 
     // Walk via each node's `nextId` override when set, falling through to the
     // next array element otherwise (the array order the Agent Builder canvas
@@ -111,6 +116,7 @@ export class FlowExecutionService {
     try {
       while (node && steps++ < definition.nodes.length * 2) {
         visitedNodeIds.push(node.id);
+        this.logger.log(`[PROFILE] node=${node.type} start +${Date.now() - t0}ms`); // temporary
         switch (node.type) {
           case 'trigger':
             break; // entry point only
@@ -148,10 +154,14 @@ export class FlowExecutionService {
             // These are matched regardless of the flow's configured intents because
             // every support bot needs to handle "ok", "thanks", "bye", and menu numbers.
             const q = question.toLowerCase();
+            // Devanagari terms alongside the romanized ones — Sarvam's STT transcribes Hindi
+            // speech in Devanagari script (see voice.service.ts), not Hinglish, so a spoken
+            // "धन्यवाद" needs to match here too, not just a typed "dhanyavaad". `।` (danda) is
+            // Hindi's own full stop, accepted as trailing punctuation alongside "!."
             const CONVERSATIONAL: Record<string, RegExp> = {
-              thanks: /^\s*(thanks|thank\s*you|thx|ty|dhanyavaad|shukriya|appreciated)\s*[!.]*\s*$/i,
-              farewell: /^\s*(bye|goodbye|good\s*bye|see\s*you|take\s*care|cya|alvida)\s*[!.]*\s*$/i,
-              acknowledge: /^\s*(ok|okay|k|alright|sure|got\s*it|understood|fine|right|hm+|cool|great|nice|perfect|no\s*problem|np|accha|theek\s*hai|haan|yes|no|yeah|yep|nope|nah|hmm+)\s*[!.]*\s*$/i,
+              thanks: /^\s*(thanks|thank\s*you|thx|ty|dhanyavaad|dhanyawad|shukriya|shukriya\s*ji|appreciated|धन्यवाद|शुक्रिया)\s*[!.।]*\s*$/i,
+              farewell: /^\s*(bye|goodbye|good\s*bye|see\s*you|take\s*care|cya|alvida|phir\s*milte\s*hain?|अलविदा|फिर\s*मिलते\s*हैं)\s*[!.।]*\s*$/i,
+              acknowledge: /^\s*(ok|okay|k|alright|sure|got\s*it|understood|fine|right|hm+|cool|great|nice|perfect|no\s*problem|np|accha|acha|theek\s*hai|thik\s*hai|theek|haan|han|ji|ji\s*haan|yes|no|yeah|yep|nope|nah|hmm+)\s*[!.]*\s*$/i,
             };
 
             // Bare numeric menu replies ("1", "2", etc.)
@@ -168,12 +178,18 @@ export class FlowExecutionService {
             if (ctx.intent) break;
 
             // ── Flow-configured intent keywords ──
+            // Hindi alternates are romanized, since that's how customers actually type on chat
+            // and WhatsApp. Without these, "mera order kahan hai" matched nothing and fell
+            // through to the (slower, paid) LLM classifier, while "mujhe refund chahiye"
+            // matched the English word "refund" — so Hindi speakers got inconsistent routing.
+            // `wapas` (back) is genuinely ambiguous between refund and return; it sits on
+            // `return` only, and `paise wapas` is caught by `refund`'s `paise`.
             const keywordMap: Record<string, RegExp> = {
-              track:  /\b(track|where.*order|order.*where|deliver|shipped|shipment|transit|package|parcel|status)\b/i,
-              refund: /\b(refund|money back|reimburs|paid.*back|cashback)\b/i,
-              return: /\b(return|send.*back|give.*back|take.*back|exchange|replace)\b/i,
-              human:  /\b(human|agent|person|speak.*to|talk.*to|real person|live agent|customer.?care|support team)\b/i,
-              greet:  /^(hi|hello|hey|namaste|good (morning|afternoon|evening)|hiya|sup)\b/i,
+              track:  /\b(track|where.*order|order.*where|deliver|shipped|shipment|transit|package|parcel|status|kahan|kaha|pahunch|pohonch|kab\s*tak|kab\s*aayega|mil\s*jayega)\b/i,
+              refund: /\b(refund|money back|reimburs|paid.*back|cashback|paisa|paise|paise\s*wapas|rupaye)\b/i,
+              return: /\b(return|send.*back|give.*back|take.*back|exchange|replace|wapas|vapas|lautana|lauta|badalna|badal)\b/i,
+              human:  /\b(human|agent|person|speak.*to|talk.*to|real person|live agent|customer.?care|support team|insaan|aadmi|kisi\s*se\s*baat|banda)\b/i,
+              greet:  /^(hi|hello|hey|namaste|namaskar|good (morning|afternoon|evening)|hiya|sup)\b/i,
             };
 
             const keywordIntent = intents.find((intent) => keywordMap[intent]?.test(q));
@@ -183,12 +199,34 @@ export class FlowExecutionService {
             }
 
             // Fallback: ask the LLM only when keywords don't resolve the intent.
+            // 'thanks'/'farewell' are always offered as candidates alongside the flow's own
+            // configured intents — the regex fast-path above only catches an exact "thank you"/
+            // "bye" with nothing else in the message; something like "Nahi, thank you." or
+            // "Thanks, but where's my order?" needs real language understanding to tell a genuine
+            // closing from a closing-shaped sentence that still has a live request in it.
             // max_tokens:5 — we only need one word back ("track", "refund", etc.)
+            const classifierIntents = Array.from(new Set([...intents, 'thanks', 'farewell']));
             const prompt =
-              `Classify the customer's message into exactly one of these intents: ${intents.join(', ')}. ` +
+              `Classify the customer's message into exactly one of these intents: ${classifierIntents.join(', ')}. ` +
+              `Classify as "thanks" or "farewell" ONLY if the customer is purely thanking you or ending the ` +
+              `conversation with no further request — if they mention a new question or ask for anything else ` +
+              `(even alongside "thanks"/"bye"), classify that request's own intent instead. ` +
               `Reply with ONLY the intent word, nothing else.\n\nMessage: ${question}`;
+            // Most ambiguous messages in a support bot end up being about an order (that's
+            // usually WHY they didn't match a keyword — "what about my thing" style phrasing) —
+            // so start the order fetch now, in parallel with the classifier call, rather than
+            // waiting to know the intent first. If the eventual intent doesn't need it (e.g. the
+            // classifier lands on "thanks"), fetch_data below just leaves this promise unawaited.
+            if (options.contactId) {
+              speculativeOrdersPromise = withTenant(this.prisma, tenantId, (tx) =>
+                tx.order.findMany({ where: { contactId: options.contactId }, orderBy: { createdAt: 'desc' }, take: 5 }),
+              );
+              speculativeOrdersPromise.catch(() => {});
+            }
+            const _tClassify = Date.now(); // [PROFILE] temporary
             const reply = (await llmComplete(prompt, 5)).trim().toLowerCase();
-            ctx.intent = intents.find((i) => reply.includes(i.toLowerCase())) ?? 'other';
+            this.logger.log(`[PROFILE] classifier LLM took ${Date.now() - _tClassify}ms`); // temporary
+            ctx.intent = classifierIntents.find((i) => reply.includes(i.toLowerCase())) ?? 'other';
             break;
           }
 
@@ -196,11 +234,19 @@ export class FlowExecutionService {
             // Fetch a few recent orders, not just the latest — a customer with more
             // than one open order needs the LLM to be able to match a mentioned
             // order ref instead of only ever knowing about the newest one.
-            if (node.config.source === 'latest_order' && options.contactId) {
-              ctx.orders = await withTenant(this.prisma, tenantId, (tx) =>
-                tx.order.findMany({ where: { contactId: options.contactId }, orderBy: { createdAt: 'desc' }, take: 5 }),
-              );
+            // None of these intents' send_reply branches ever read ctx.orders (see the thanks/
+            // farewell/greet/human/acknowledge cases below) — skip the DB round-trip entirely
+            // rather than fetching data nothing downstream will look at.
+            const NEVER_NEEDS_ORDERS = new Set(['thanks', 'farewell', 'greet', 'human', 'acknowledge']);
+            const _tFetch = Date.now(); // [PROFILE] temporary
+            if (node.config.source === 'latest_order' && options.contactId && !NEVER_NEEDS_ORDERS.has(ctx.intent ?? '')) {
+              ctx.orders = speculativeOrdersPromise
+                ? await speculativeOrdersPromise
+                : await withTenant(this.prisma, tenantId, (tx) =>
+                    tx.order.findMany({ where: { contactId: options.contactId }, orderBy: { createdAt: 'desc' }, take: 5 }),
+                  );
             }
+            this.logger.log(`[PROFILE] fetch_data DB took ${Date.now() - _tFetch}ms, intent=${ctx.intent}`); // temporary
             break;
           }
 
@@ -237,7 +283,7 @@ export class FlowExecutionService {
                 conversationId: options.conversationId,
               });
               return {
-                answer: `Of course — I've raised ticket ${ticket.extRef} and one of our agents will contact you soon.`,
+                answer: R.humanHandoff(lang, ticket.extRef ?? ticket.id),
                 escalate: false,
                 configured: true,
                 sources: [],
@@ -250,7 +296,7 @@ export class FlowExecutionService {
             // customer's actual orders — not left to the LLM to guess at —
             // since a wrong "yes you can refund that" is a real-money mistake.
             if (ctx.intent === 'refund') {
-              return this.buildRefundEligibilityReply(definition, ctx.orders ?? [], visitedNodeIds);
+              return this.buildRefundEligibilityReply(definition, ctx.orders ?? [], visitedNodeIds, lang, options);
             }
 
             // A return needs an actual delivered order and a human to arrange
@@ -258,13 +304,13 @@ export class FlowExecutionService {
             // than one qualifies, and raise the ticket once a single order is
             // resolved, rather than leaving any of that to the LLM to guess.
             if (ctx.intent === 'return') {
-              return this.buildReturnReply(tenantId, ctx.orders ?? [], question, options, visitedNodeIds);
+              return this.buildReturnReply(tenantId, ctx.orders ?? [], question, options, visitedNodeIds, lang);
             }
 
             // ── Greeting — instant, no LLM needed ──
             if (ctx.intent === 'greet') {
               return {
-                answer: `Hello! 👋 I'm Astra, your support assistant. I can help you track orders, check refund eligibility, arrange returns, or connect you with a human agent. What can I help you with?`,
+                answer: R.greeting(lang),
                 escalate: false,
                 configured: true,
                 sources: [],
@@ -273,34 +319,37 @@ export class FlowExecutionService {
               };
             }
 
-            // ── Thanks — warm acknowledgment ──
+            // ── Thanks — warm acknowledgment, and a genuine closing (customer is done) ──
             if (ctx.intent === 'thanks') {
               return {
-                answer: `You're welcome! 😊 Is there anything else I can help you with?`,
+                answer: R.thanksReply(lang),
                 escalate: false,
                 configured: true,
                 sources: [],
                 ticketRef: null,
+                closing: true,
                 visitedNodeIds,
               };
             }
 
-            // ── Farewell — friendly goodbye ──
+            // ── Farewell — friendly goodbye, and a genuine closing ──
             if (ctx.intent === 'farewell') {
               return {
-                answer: `Goodbye! 👋 Feel free to reach out anytime you need help. Have a great day!`,
+                answer: R.farewell(lang),
                 escalate: false,
                 configured: true,
                 sources: [],
                 ticketRef: null,
+                closing: true,
                 visitedNodeIds,
               };
             }
 
             // ── Acknowledgment / short reply — guide them to what we can do ──
             if (ctx.intent === 'acknowledge') {
+              const menuAns = R.acknowledgeMenu(lang);
               return {
-                answer: `Is there anything else I can help you with? I can assist with:\n\n📦 **Order tracking**\n💰 **Refund eligibility**\n↩️ **Returns**\n👤 **Connect to a human agent**\n\nJust let me know!`,
+                answer: options.channel === 'voice' ? stripMarkdownForSpeech(menuAns) : menuAns,
                 escalate: false,
                 configured: true,
                 sources: [],
@@ -311,7 +360,7 @@ export class FlowExecutionService {
 
             // ── Tracking — template response from real DB data, no LLM needed ──
             if (ctx.intent === 'track') {
-              return this.buildTrackingReply(ctx.orders ?? [], question, visitedNodeIds);
+              return this.buildTrackingReply(ctx.orders ?? [], question, visitedNodeIds, lang, options);
             }
 
             // Handle non-delivery complaint when a customer says "not received" for a delivered order
@@ -330,7 +379,7 @@ export class FlowExecutionService {
                 conversationId: options.conversationId,
               });
               return {
-                answer: `I'm sorry to hear that you haven't received order ${targetOrder.extRef ?? targetOrder.id} despite it being marked as delivered. I've raised escalation ticket ${ticket.extRef} for our logistics team to investigate immediately.`,
+                answer: R.nonDeliveryEscalated(lang, targetOrder.extRef ?? targetOrder.id, ticket.extRef ?? ticket.id),
                 escalate: false,
                 configured: true,
                 sources: [],
@@ -341,7 +390,9 @@ export class FlowExecutionService {
 
             // ── LLM fallback — only for genuinely ambiguous questions ──
             // KB search is the only DB call needed here.
+            const _tKb = Date.now(); // [PROFILE] temporary
             const articles = await this.kb.searchByKeyword(tenantId, question);
+            this.logger.log(`[PROFILE] KB search took ${Date.now() - _tKb}ms`); // temporary
 
             const kbContext = articles.map((a) => `# ${a.title}\n${a.body}`).join('\n---\n');
 
@@ -361,12 +412,14 @@ export class FlowExecutionService {
             const prompt =
               `You are Astra, the support assistant. ${styleInstruction}The customer's detected intent is ` +
               `"${ctx.intent ?? 'other'}". ${orderLine}Answer the customer ONLY using the knowledge base context ` +
-              `below (and the order details above if relevant). Reply in ${language}. If the answer is not in the ` +
+              `below (and the order details above if relevant). ${languageInstruction(language)} If the answer is not in the ` +
               `context, or the issue needs a human (like a refund or complaint), reply with exactly the word ` +
               `ESCALATE.\n\nContext:\n${kbContext || '(no matching knowledge base articles)'}\n\n` +
               `Customer question: ${question}`;
 
+            const _tGen = Date.now(); // [PROFILE] temporary
             const reply = await (llmFn ?? llmComplete)(prompt);
+            this.logger.log(`[PROFILE] answer-generation LLM took ${Date.now() - _tGen}ms, total run() so far ${Date.now() - t0}ms`); // temporary
             const escalate = reply.trim().toUpperCase() === 'ESCALATE';
             const answer = options.channel === 'voice' ? stripMarkdownForSpeech(reply) : reply;
 
@@ -388,7 +441,7 @@ export class FlowExecutionService {
             }
 
             return {
-              answer: escalate ? null : answer,
+              answer: escalate ? R.escalatedGeneric(lang, ticketRef) : answer,
               escalate,
               configured: true,
               sources: articles.map((a) => a.title),
@@ -410,7 +463,7 @@ export class FlowExecutionService {
     } catch (err) {
       if (err instanceof LlmAuthError) {
         this.logger.warn(err.message);
-        return { answer: null, escalate: false, configured: false, sources: [], ticketRef: null, visitedNodeIds };
+        return { answer: R.notConfigured(lang), escalate: false, configured: false, sources: [], ticketRef: null, visitedNodeIds };
       }
       throw err;
     }
@@ -428,11 +481,12 @@ export class FlowExecutionService {
     definition: AgentFlowDefinition,
     orders: Order[],
     visitedNodeIds: string[],
+    lang: Lang,
+    options?: RunOptions,
   ): AstraAnswerDto {
     if (orders.length === 0) {
       return {
-        answer:
-          "I don't see any orders on your account, so there's nothing to check for a refund. If you placed the order with a different phone number or email, let me know and I'll look again.",
+        answer: R.refundNoOrders(lang),
         escalate: false,
         configured: true,
         sources: [],
@@ -449,20 +503,28 @@ export class FlowExecutionService {
 
     const lines: string[] = [];
     if (eligible.length > 0) {
-      lines.push(`These orders are eligible for a refund (delivered within the last ${windowDays} days):`);
-      lines.push(...eligible.map((o) => formatOrderLine(o)));
+      lines.push(R.refundEligibleHeader(lang, windowDays));
+      lines.push(...eligible.map((o) => R.formatOrderLine(o)));
     } else {
-      lines.push('None of your recent orders are currently eligible for a refund.');
+      lines.push(R.refundNoneEligible(lang));
     }
     if (ineligible.length > 0) {
-      lines.push('', 'Not eligible:');
-      lines.push(...ineligible.map((o) => formatOrderLine(o, ineligibleReason(o, windowDays))));
+      lines.push('', R.refundNotEligibleHeader(lang));
+      lines.push(...ineligible.map((o) => R.formatOrderLine(o, R.ineligibleReason(lang, o, windowDays))));
     }
     if (eligible.length > 0) {
-      lines.push('', 'Reply with the order reference to start a refund on an eligible order.');
+      lines.push('', R.refundFooter(lang));
     }
 
-    return { answer: lines.join('\n'), escalate: false, configured: true, sources: [], ticketRef: null, visitedNodeIds };
+    const fullAnswer = lines.join('\n');
+    return {
+      answer: options?.channel === 'voice' ? stripMarkdownForSpeech(fullAnswer) : fullAnswer,
+      escalate: false,
+      configured: true,
+      sources: [],
+      ticketRef: null,
+      visitedNodeIds,
+    };
   }
 
   /**
@@ -480,13 +542,13 @@ export class FlowExecutionService {
     question: string,
     options: RunOptions,
     visitedNodeIds: string[],
+    lang: Lang,
   ): Promise<AstraAnswerDto> {
     const eligible = orders.filter((o) => o.status === 'delivered');
 
     if (eligible.length === 0) {
       return {
-        answer:
-          "I don't see any delivered orders on your account that are eligible for a return. If you placed the order with a different phone number or email, let me know and I'll look again.",
+        answer: R.returnNoneEligible(lang),
         escalate: false,
         configured: true,
         sources: [],
@@ -502,7 +564,7 @@ export class FlowExecutionService {
     if (!target) {
       const refs = eligible.map((o) => o.extRef ?? o.id).join(' or ');
       return {
-        answer: `You have ${eligible.length} delivered orders eligible for return — ${refs}. Which one would you like to return?`,
+        answer: R.returnWhichOne(lang, eligible.length, refs),
         escalate: false,
         configured: true,
         sources: [],
@@ -521,7 +583,7 @@ export class FlowExecutionService {
     });
 
     return {
-      answer: `Got it — I've raised a return request for ${target.extRef ?? target.id} ("${target.description ?? 'item'}"), ticket ${ticket.extRef}. One of our agents will contact you soon to arrange the pickup.`,
+      answer: R.returnCreated(lang, target.extRef ?? target.id, target.description ?? 'item', ticket.extRef ?? ticket.id),
       escalate: false,
       configured: true,
       sources: [],
@@ -538,10 +600,14 @@ export class FlowExecutionService {
     orders: Order[],
     question: string,
     visitedNodeIds: string[],
+    lang: Lang,
+    options?: RunOptions,
   ): AstraAnswerDto {
+    const isVoice = options?.channel === 'voice';
+
     if (orders.length === 0) {
       return {
-        answer: `I'd be happy to help track your order! Could you please share your order reference number (e.g. ZK-123)?`,
+        answer: R.trackAskForRef(lang),
         escalate: false,
         configured: true,
         sources: [],
@@ -555,27 +621,10 @@ export class FlowExecutionService {
     const normalizedQ = normalizeRef(question);
     const matchedOrder = orders.find((o) => o.extRef && normalizedQ.includes(normalizeRef(o.extRef)));
 
-    const STATUS_LABELS: Record<string, string> = {
-      in_transit: '🚚 In Transit — your order is on its way',
-      delivered: '✅ Delivered',
-      cancelled: '❌ Cancelled',
-      processing: '⏳ Processing — we\'re preparing your order',
-      shipped: '📦 Shipped — your order has left the warehouse',
-      returned: '↩️ Returned',
-      refunded: '💰 Refunded',
-    };
-
-    const formatOrder = (o: Order): string => {
-      const ref = o.extRef ?? o.id;
-      const desc = o.description ?? 'item';
-      const status = STATUS_LABELS[o.status ?? ''] ?? `Status: ${o.status ?? 'unknown'}`;
-      const amount = o.amount ? `₹${o.amount}` : '';
-      return `**${ref}** — "${desc}" ${amount}\n${status}`;
-    };
-
     if (matchedOrder) {
+      const rawAns = `${R.trackingStatusHeader(lang)}\n\n${R.formatOrderCard(lang, matchedOrder)}`;
       return {
-        answer: `Here's the status of your order:\n\n${formatOrder(matchedOrder)}`,
+        answer: isVoice ? stripMarkdownForSpeech(rawAns) : rawAns,
         escalate: false,
         configured: true,
         sources: [],
@@ -589,7 +638,7 @@ export class FlowExecutionService {
     if (inTransit.length > 1) {
       const refs = inTransit.map((o) => o.extRef ?? o.id).join(' or ');
       return {
-        answer: `You have ${inTransit.length} orders currently in transit — ${refs}. Which one would you like to check?`,
+        answer: R.trackingWhichOne(lang, inTransit.length, refs),
         escalate: false,
         configured: true,
         sources: [],
@@ -601,8 +650,9 @@ export class FlowExecutionService {
 
     // Single order or single in-transit — show it
     const target = inTransit.length === 1 ? inTransit[0] : orders[0];
+    const rawAns = `${R.trackingLatestHeader(lang)}\n\n${R.formatOrderCard(lang, target!)}`;
     return {
-      answer: `Here's the latest on your order:\n\n${formatOrder(target!)}`,
+      answer: isVoice ? stripMarkdownForSpeech(rawAns) : rawAns,
       escalate: false,
       configured: true,
       sources: [],

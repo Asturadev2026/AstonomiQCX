@@ -27,6 +27,10 @@ const schema = z.object({
   EXOTEL_API_KEY: z.string().optional(),
   EXOTEL_API_TOKEN: z.string().optional(),
   EXOTEL_SUBDOMAIN: z.string().optional(),
+  // Where Exotel can reach OUR webhook (e.g. an ngrok/cloudflared URL in dev, the real API
+  // domain in prod) — shown back in TelephonyService#integrationStatus so the UI doesn't
+  // always claim the prod URL. Falls back to APP_URL, then a hardcoded prod guess, if unset.
+  PUBLIC_WEBHOOK_BASE_URL: z.string().optional(),
 
   // LLM_PROVIDER forces a choice; otherwise Astra auto-picks whichever key is
   // set (Anthropic first) — see apps/api/src/ai/llm.ts.

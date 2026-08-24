@@ -157,9 +157,7 @@ export function AgentBuilder() {
         onSuccess: (res) => {
           const reply = !res.configured
             ? "I'm not connected to an AI provider yet — ask your developer to add an API key."
-            : res.escalate
-              ? `I'm not sure how to help with that — I've raised ticket ${res.ticketRef} and a human agent will take it from here.`
-              : res.answer ?? '';
+            : res.answer ?? '';
           setTestMessages((m) => [...m, { from: 'bot', text: reply }]);
           setTracedIds(res.visitedNodeIds ?? []);
         },

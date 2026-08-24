@@ -49,3 +49,21 @@ create extension if not exists pg_trgm;
 create index if not exists contacts_name_trgm on contacts using gin (name gin_trgm_ops);
 create index if not exists tickets_subject_trgm on tickets using gin (subject gin_trgm_ops);
 create index if not exists orders_ext_ref_trgm on orders using gin (ext_ref gin_trgm_ops);
+
+-- Tenant resolution for inbound Exotel calls (Multilingual/Sarvam/Exotel plan, Phase 0) — the
+-- webhook only has the dialed virtual number, not a tenant id. SECURITY DEFINER + STABLE + a
+-- pinned search_path, same pattern the Auth & Onboarding plan uses for
+-- resolve_tenant_by_oidc_subject(), so it works regardless of the calling connection's
+-- app.tenant setting. ExotelWebhookService#resolveTenantId already calls this function name —
+-- it previously existed in no migration and not in this file, so every real inbound call 500'd.
+create or replace function resolve_tenant_by_virtual_number(p_number text)
+returns uuid
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select tenant_id from numbers where number = p_number limit 1
+$$;
+revoke execute on function resolve_tenant_by_virtual_number(text) from public;
+grant execute on function resolve_tenant_by_virtual_number(text) to astronomiq_app;

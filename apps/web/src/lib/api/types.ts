@@ -96,9 +96,10 @@ export interface ConvHubPayload {
 }
 
 // POST /api/v1/ai/ask
+export type { SupportedLanguage } from '@aq/shared';
 export interface AskAstraPayload {
   question: string;
-  language?: string;
+  language?: import('@aq/shared').SupportedLanguage;
   channel?: 'chat' | 'whatsapp' | 'voice';
   contactId?: string;
 }
@@ -118,6 +119,9 @@ export interface AstraAnswer {
   sources: string[];
   ticketRef: string | null;
   clarifying?: boolean;
+  /** true for a genuine closing reply (Agent Builder's thanks/farewell intents) — the customer
+   *  is done, not just pausing. */
+  closing?: boolean;
   /** IDs of the flow's nodes actually executed for this reply, in order — used by Agent Builder's Test panel to trace the run on canvas. */
   visitedNodeIds?: string[];
 }

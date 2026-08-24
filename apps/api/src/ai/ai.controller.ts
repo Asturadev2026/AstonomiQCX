@@ -59,11 +59,7 @@ export class AiController {
     // Now log the outbound message in the background (don't make the client wait).
     conversationPromise.then(async (conversationId) => {
       if (!conversationId) return;
-      const replyText = !answer.configured
-        ? "We're having a temporary issue — our team will follow up with you shortly."
-        : answer.escalate
-          ? `Thanks — I've raised this with our team (ref ${answer.ticketRef}). They'll follow up shortly.`
-          : answer.answer ?? '';
+      const replyText = answer.answer ?? '';
       try {
         await this.conversations.appendMessage(req.tenantId, conversationId, {
           senderType: 'bot',

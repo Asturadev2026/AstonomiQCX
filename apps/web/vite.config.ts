@@ -11,7 +11,7 @@ export default defineConfig({
       // selfHandleResponse:true lets us pipe the upstream response directly without any
       // buffering. Without this Vite accumulates the entire SSE body before forwarding it.
       '/api/v1/ai/ask/stream': {
-        target: 'http://localhost:4000',
+        target: 'http://127.0.0.1:4000',
         changeOrigin: true,
         selfHandleResponse: true,
         configure: (proxy) => {
@@ -21,10 +21,27 @@ export default defineConfig({
             // Pipe the stream directly — no buffering
             proxyRes.pipe(res);
           });
+          proxy.on('error', (_err, _req, res) => {
+            if ('writeHead' in res && !res.headersSent) {
+              res.writeHead(502, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'API server is starting or unreachable' }));
+            }
+          });
         },
       },
       // All other API calls — standard buffered proxy
-      '/api': { target: 'http://localhost:4000', changeOrigin: true },
+      '/api': {
+        target: 'http://127.0.0.1:4000',
+        changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('error', (_err, _req, res) => {
+            if ('writeHead' in res && !res.headersSent) {
+              res.writeHead(502, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'API server is starting or unreachable' }));
+            }
+          });
+        },
+      },
     },
   },
 });
